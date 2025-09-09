@@ -18,58 +18,120 @@ This classification supports librarians and data curators in building accurate t
 
 ## Quick Start
 
-**Process TRACS competition dataset:**
+The system provides a numbered pipeline for processing CSV data with combined Id fields (bibcode_telescope format):
+
+### Mini Pipeline
+
 ```bash
-# Download TRACS test data and process for competition submission
-python tracs_data_loader.py
-python process_all_tracs_test.py
+# Step 1: Process and explore data
+python scripts/1-process_data.py data/train.csv --create-subset 100
+
+# Step 2: Run telescope classification  
+python scripts/2-classify_papers.py data/train_subset.csv
+
+# Step 3: Evaluate results (if ground truth available)
+python scripts/3-evaluate_results.py results/submission.csv ground_truth.json
+
+# Step 4: Generate detailed analysis
+python scripts/4-analyze_results.py results/submission.csv --detailed
 ```
 
-**Analyze individual papers:**
+### Full Kaggle run
+
+For full dataset processing:
+
 ```bash
-# Classify a specific paper
-python -m automated_mission_classifier --mission MULTI --bibcode 2012A&A...537A..18M --data-file data/tracs_test_combined.json
+python scripts/1-process_data.py data/test.csv
+python scripts/2-classify_papers.py data/test.csv --output-dir results/production
+python scripts/4-analyze_results.py results/production/results/submission.csv
 ```
+
+### Data Format
+
+The inputs are expected to be CSV files with:
+- ID format: `bibcode_telescope` (e.g., `2012A&A...537A..18M_CHANDRA`)
+- Text fields: title, abstract, body, acknowledgments, grants
+
+The output Competition CSV with boolean classification columns
+
+### Configuration Options
+
+Common parameters across all scripts:
+- `--gpt-model`: GPT model for classification (default: gpt-5-mini)
+- `--reranker-model`: GPT model for snippet reranking (default: gpt-4.1-nano)  
+- `--limit-rows`: Limit number of rows processed
+- `--output-dir`: Directory for output files
+- `--verbose`: Enable detailed logging
 
 ## Installation
 
-**Prerequisites**: Python 3.10+, OpenAI API key
+Requires Python 3.10+ and an OpenAI API key.
 
 ```bash
-# Clone and setup
 git clone https://github.com/jwuphysics/tracs_wasp2025
 cd tracs_wasp2025
 uv venv && source .venv/bin/activate
 uv sync
-
-# Set your OpenAI API key
 export OPENAI_API_KEY=your_openai_key_here
 ```
 
+## System Overview
 
-## How It Works
+The system classifies astronomical papers by telescope relevance using a multi-stage LLM pipeline:
 
-The system processes astronomical papers through several stages:
+1. **Text Processing**: Combines title, abstract, body, acknowledgments, and grants
+2. **Telescope Detection**: Identifies relevant telescopes using keywords and LLM analysis  
+3. **Content Reranking**: Extracts and ranks most relevant text passages
+4. **Classification**: Applies LLM prompts to classify telescope usage type
 
-1. **Text Analysis**: Extracts relevant content from paper title, abstract, body text, acknowledgments, and grants
-2. **Telescope Identification**: Uses telescope-specific keywords and LLM analysis to identify which telescope (if any) the paper discusses
-3. **Content Reranking**: Uses GPT-4.1-nano to identify and rank the most relevant text passages for classification
-4. **Multi-Label Classification**: Applies specialized LLM prompts to classify papers into the four telescope usage categories
-5. **Output Generation**: Produces structured results in both detailed JSON and competition CSV formats
+## Input and Output Formats
 
-## Results and Output
+### Input CSV Format
+The system expects CSV files with combined Id fields:
 
-**Competition CSV Format** (`*_competition.csv`):
 ```csv
-Id,telescope,science,instrumentation,mention,not_telescope
-2012A&A...537A..18M,CHANDRA,False,False,True,False
-1998SPIE.3356.1078P,CHANDRA,False,True,False,False
+Id,bibcode,author,year,title,abstract,body,acknowledgments,grants
+2012A&A...537A..18M_CHANDRA,2012A&A...537A..18M,"Author, A.",2012,Paper Title,Abstract text,Body text,Ack text,Grant info
 ```
 
-**Detailed Analysis** (`*_report.json`):
-- Paper-by-paper classification reasoning and supporting quotes
-- Processing statistics and performance metrics
-- Model configuration and parameters used
+### Competition Output Format
+Boolean classifications for submission:
+
+```csv
+Id,telescope,science,instrumentation,mention,not_telescope
+2012A&A...537A..18M_CHANDRA,CHANDRA,False,False,True,False
+1998SPIE.3356.1078P_CHANDRA,CHANDRA,False,True,False,False
+2022ApJ...935..177S_HST,HST,True,False,False,False
+```
+
+### Detailed Analysis Output
+The system also generates comprehensive JSON reports with:
+- Classification reasoning and supporting quotes
+- Processing statistics and error handling
+- Telescope detection confidence scores
+
+## Direct Classifier Configuration
+
+For running the automated_mission_classifier directly:
+
+```bash
+python -m automated_mission_classifier \
+    --csv-file data/test.csv \             # CSV input file
+    --output-dir results \                 # Output directory
+    --limit-rows 100 \                     # Limit processing (optional)
+    --gpt-model gpt-5-mini \              # Classification model
+    --reranker-model gpt-4.1-nano \       # Reranking model
+    --top-k-snippets 5 \                  # Max snippets to LLM
+    --reranker-threshold 0.001 \          # Min reranker confidence
+    --verbose                              # Detailed logging
+```
+
+Alternative JSON input mode:
+```bash
+python -m automated_mission_classifier \
+    --data-file papers.json \             # JSON input file
+    --output-dir results
+```
 
 ## Supported Telescopes
 
@@ -81,6 +143,3 @@ Id,telescope,science,instrumentation,mention,not_telescope
 ## Citation and Acknowledgments
 
 This work was developed for the WASP2025 shared task on telescope bibliography classification. The TRACS dataset is available on Hugging Face at `adsabs/TRACS`. Credit to Felix Grezes. TRACS @ WASP 2025. https://kaggle.com/competitions/tracs-wasp-2025, 2025. Kaggle.
-
-For technical details about the system architecture and implementation, see `CLAUDE.md`.
-

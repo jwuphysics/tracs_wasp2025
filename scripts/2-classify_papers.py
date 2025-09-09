@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""
+Step 2: Run telescope classification on CSV data.
+
+This script performs the core classification task:
+- Loads CSV data with combined Id field (bibcode_telescope)
+- Classifies each paper's relationship to the specified telescope
+- Outputs results in competition CSV format
+- Provides detailed progress reporting and statistics
+
+Usage:
+    python scripts/2-classify_papers.py data/test_subset.csv
+    python scripts/2-classify_papers.py data/test.csv --limit-rows 1000
+    python scripts/2-classify_papers.py data/test.csv --output-dir results/full_run
+"""
+
+import argparse
+import logging
+import sys
+from pathlib import Path
+import time
+
+# Add the project root to Python path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from automated_mission_classifier.csv_classifier import CSVTelescopeClassifier
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Step 2: Run telescope classification on CSV data",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    
+    # Required arguments
+    parser.add_argument(
+        "csv_file",
+        type=Path,
+        help="Path to CSV data file with combined Id field (bibcode_telescope)"
+    )
+    
+    # Optional arguments
+    parser.add_argument(
+        "--output-dir", "-o",
+        type=Path,
+        default=Path("./output"),
+        help="Directory for output files (CSV and reports)"
+    )
+    
+    parser.add_argument(
+        "--prompts-dir", "-p",
+        type=Path,
+        default=Path("./prompts"),
+        help="Directory containing prompt template files"
+    )
+    
+    parser.add_argument(
+        "--gpt-model",
+        default="gpt-5-mini",
+        help="GPT model for telescope classification"
+    )
+    
+    parser.add_argument(
+        "--reranker-model",
+        default="gpt-4.1-nano",
+        help="GPT model for snippet reranking"
+    )
+    
+    parser.add_argument(
+        "--top-k-snippets",
+        type=int,
+        default=5,
+        help="Number of top reranked snippets to send to the LLM"
+    )
+    
+    parser.add_argument(
+        "--context-sentences",
+        type=int,
+        default=3,
+        help="Number of sentences before and after a keyword to include in snippets"
+    )
+    
+    parser.add_argument(
+        "--reranker-threshold",
+        type=float,
+        default=0.001,
+        help="Minimum reranker score for snippets to proceed with LLM analysis"
+    )
+    
+    parser.add_argument(
+        "--limit-rows",
+        type=int,
+        help="Limit processing to the first N rows (useful for testing)"
+    )
+    
+    parser.add_argument(
+        "--openai-key",
+        help="OpenAI API key (uses OPENAI_API_KEY env var if not provided)"
+    )
+    
+    parser.add_argument(
+        "--output-filename",
+        default="submission.csv",
+        help="Output CSV filename"
+    )
+    
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable verbose logging"
+    )
+    
+    args = parser.parse_args()
+    
+    # Set logging level
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+    
+    # Validate arguments
+    if not args.csv_file.exists():
+        print(f"Error: CSV file not found: {args.csv_file}")
+        return 1
+    
+    if args.limit_rows is not None and args.limit_rows < 1:
+        print("Error: --limit-rows must be a positive integer")
+        return 1
+    
+    # Create output directory
+    try:
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        if not args.prompts_dir.exists():
+            print(f"Warning: Prompts directory not found: {args.prompts_dir}")
+    except Exception as e:
+        print(f"Error: Failed to create output directory: {e}")
+        return 1
+    
+    print("=" * 60)
+    print("STEP 2: TELESCOPE CLASSIFICATION")
+    print("=" * 60)
+    print(f"Input file: {args.csv_file}")
+    print(f"Output directory: {args.output_dir}")
+    if args.limit_rows:
+        print(f"Processing limit: {args.limit_rows:,} rows")
+    print(f"Models: {args.gpt_model} (classification), {args.reranker_model} (reranking)")
+    print()
+    
+    start_time = time.time()
+    
+    try:
+        # Initialize classifier
+        print("Initializing CSV telescope classifier...")
+        
+        classifier = CSVTelescopeClassifier(
+            csv_file=args.csv_file,
+            output_dir=args.output_dir,
+            prompts_dir=args.prompts_dir,
+            openai_key=args.openai_key,
+            gpt_model=args.gpt_model,
+            reranker_model=args.reranker_model,
+            top_k_snippets=args.top_k_snippets,
+            context_sentences=args.context_sentences,
+            reranker_threshold=args.reranker_threshold,
+            limit_rows=args.limit_rows,
+        )
+        
+        print("Processing CSV rows...")
+        results = classifier.process_rows()
+        
+        if not results:
+            print("No rows were successfully processed")
+            return 1
+        
+        processing_time = time.time() - start_time
+        
+        # Save competition CSV
+        csv_path = classifier.save_competition_csv(results, args.output_filename)
+        print(f"Competition CSV saved to: {csv_path}")
+        
+        # Generate and save report
+        report = classifier.generate_report(results)
+        print(f"Classification report generated")
+        
+        print()
+        print("=" * 60)
+        print("PROCESSING SUMMARY")
+        print("=" * 60)
+        print(f"Processing time: {processing_time:.1f} seconds")
+        print(f"Total rows processed: {len(results):,}")
+        print(f"Output CSV: {csv_path}")
+        print(f"Average time per paper: {processing_time/len(results):.2f} seconds")
+        
+        if 'telescope_distribution' in report:
+            print(f"\nTelescope Distribution:")
+            for telescope, count in report['telescope_distribution'].items():
+                percentage = report['telescope_percentages'][telescope]
+                print(f"  {telescope}: {count:,} rows ({percentage:.1f}%)")
+        
+        if 'classification_distribution' in report:
+            print(f"\nClassification Distribution:")
+            for category, count in report['classification_distribution'].items():
+                percentage = (count / len(results)) * 100
+                print(f"  {category}: {count:,} rows ({percentage:.1f}%)")
+        
+        # Suggest next steps
+        print()
+        print("Next steps:")
+        if args.limit_rows:
+            print(f"   • Run full dataset: python scripts/2-classify_papers.py {args.csv_file}")
+        print(f"   • Evaluate results: python scripts/3-evaluate_results.py {csv_path} [ground_truth.json]")
+        print(f"   • Generate analysis: python scripts/4-analyze_results.py {csv_path}")
+        
+    except ValueError as e:
+        print(f"Configuration error: {e}")
+        return 1
+    except FileNotFoundError as e:
+        print(f"File error: {e}")
+        return 1
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        logger.exception("Full traceback:")
+        return 1
+    
+    print(f"\nClassification completed successfully!")
+    return 0
+
+
+if __name__ == "__main__":
+    exit(main())

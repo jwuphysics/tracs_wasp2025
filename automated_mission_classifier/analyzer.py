@@ -41,7 +41,7 @@ class AutomatedMissionClassifier:
                  reranker_threshold: float = 0.001,
                  openai_key: Optional[str] = None,
                  cohere_key: Optional[str] = None,
-                 gpt_model: str = 'gpt-4.1-mini-2025-04-14',
+                 gpt_model: str = 'gpt-5-mini',
                  cohere_reranker_model: str = 'rerank-v3.5', 
                  top_k_snippets: int = 15,
                  context_sentences: int = 3,
@@ -85,7 +85,7 @@ class AutomatedMissionClassifier:
         # Initialize clients
         self.openai_client = OpenAIClient(self.openai_key, self.gpt_model)
         self.cohere_client = CohereClient(self.cohere_key, self.cohere_reranker_model)
-        self.gpt_reranker = GPTReranker(self.openai_client, 'gpt-4.1-nano-2025-04-14') if self.use_gpt_reranker else None
+        self.gpt_reranker = GPTReranker(self.openai_client, 'gpt-5-nano') if self.use_gpt_reranker else None
         
         # Create directories
         self.output_dir = output_dir 
@@ -123,7 +123,7 @@ class AutomatedMissionClassifier:
         # Initialize report generator
         model_config = {
             "gpt_model": self.gpt_model,
-            "reranker_type": "GPT-4.1-nano-2025-04-14" if self.use_gpt_reranker else "Cohere",
+            "reranker_type": "GPT-5-nano" if self.use_gpt_reranker else "Cohere",
             "cohere_reranker_model": self.cohere_reranker_model if self.cohere_client.client else "N/A (Cohere unavailable)",
             "top_k_snippets": self.top_k_snippets,
             "context_sentences": self.context_sentences,
@@ -377,9 +377,17 @@ class AutomatedMissionClassifier:
             detected_telescope = self._identify_telescope(combined_text)
         
         # Step 2: Extract relevant snippets for the detected telescope
+        if detected_telescope == "NONE":
+            # For NONE papers, no telescope-specific analysis is needed
+            # Return a default NONE classification
+            logger.info(f"Paper {bibcode} classified as NONE (no telescope detected)")
+            return {"telescope": "NONE", "science": False, "instrumentation": False,
+                   "mention": False, "not_telescope": True, "quotes": [], 
+                   "reason": "No telescope keywords found in text - classified as NONE"}
+
         telescope_keywords = self.science_analyzer.TELESCOPE_KEYWORDS.get(detected_telescope, [])
         if not telescope_keywords:
-            # If telescope not supported, try generic keywords
+            # If telescope not supported, try generic keywords from supported telescopes
             telescope_keywords = []
             for tel, keywords in self.science_analyzer.TELESCOPE_KEYWORDS.items():
                 if tel in ['CHANDRA', 'HST', 'JWST']:
@@ -516,7 +524,7 @@ class AutomatedMissionClassifier:
             except Exception as e:
                 logger.warning(f"Telescope identification failed: {e}")
         
-        # Fallback: simple keyword matching
+        # Fallback: simple keyword matching for actual telescopes only
         text_lower = combined_text.lower()
         
         # Check for specific telescopes in order of specificity
@@ -526,6 +534,7 @@ class AutomatedMissionClassifier:
                     if keyword.lower() in text_lower:
                         return telescope
         
+        # Return "NONE" only when no actual telescope keywords are found
         return "NONE"
 
     def process_single_paper(self, bibcode: str):

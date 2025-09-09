@@ -13,6 +13,14 @@ PROMPT_FILES = {
     'rerank_science_query': 'rerank_science_query.txt',
     'telescope_identification_system': 'telescope_identification_system.txt',
     'telescope_identification_user': 'telescope_identification_user.txt',
+    'telescope_detection_system': 'telescope_detection_system.txt',
+    'telescope_detection_user': 'telescope_detection_user.txt',
+    'telescope_classification_system': 'telescope_classification_system.txt',
+    'telescope_classification_user': 'telescope_classification_user.txt',
+    'rerank_classification_query': 'rerank_classification_query.txt',
+    'primary_telescope_identification_system': 'primary_telescope_identification_system.txt',
+    'primary_telescope_identification_user': 'primary_telescope_identification_user.txt',
+    'primary_telescope_rerank_query': 'primary_telescope_rerank_query.txt',
 }
 
 

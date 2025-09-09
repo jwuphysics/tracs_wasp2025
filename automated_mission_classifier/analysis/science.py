@@ -18,22 +18,24 @@ class ScienceAnalyzer:
     # Telescope-specific keyword mappings for TRACS dataset
     TELESCOPE_KEYWORDS = {
         "CHANDRA": [
-            "chandra", "cxc", "cxo", "axaf", "chandra x-ray observatory",
+            "chandra", "cxc", "cxo", "axaf", "chandra x-ray observatory", 
+            "advanced x-ray astrophysics facility", "chandra xray observatory",
             "acis", "hrc", "hetg", "letg", "hrma", "pcad", "ephin",
-            "chandra data", "x-ray", "xray"
+            "chandra data", "chandra observation", "chandra observations",
+            "chandra image", "chandra images", "chandra spectrum", "chandra spectra"
         ],
         "HST": [
             "hst", "hubble", "hubble space telescope",
             "wfc3", "acs", "stis", "cos", "nicmos", 
-            "wfpc2", "foc", "fos", "ghrs", "hsp", "wfpc"
+            "wfpc2", "foc", "fos", "ghrs", "hsp", "wfpc",
+            "hubble data", "hubble observations", "hubble images",
+            "hubble photometry", "hst data", "hst observations"
         ],
         "JWST": [
             "jwst", "james webb space telescope", "webb", "ngst",
+            "next generation space telescope", "james webb",
             "nircam", "nirspec", "miri", "niriss", "fgs",
-        ],
-        "NONE": [
-            # Generic terms that might help identify papers not about specific telescopes
-            "ground-based", "theoretical", "simulation", "model"
+            "jwst data", "webb data", "jwst observations", "webb observations"
         ],
         # Legacy support
         "TESS": [

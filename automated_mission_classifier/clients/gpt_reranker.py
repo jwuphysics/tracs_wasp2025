@@ -1,4 +1,4 @@
-"""GPT-4.1-nano reranker client for replacing Cohere reranking."""
+"""GPT reranker client for replacing Cohere reranking."""
 
 import logging
 import math
@@ -17,7 +17,7 @@ NO_TOKEN_ID = 3160   # "No" token in `o200k_base`
 class GPTReranker:
     """GPT-4.1-nano based reranker using logit bias and log probabilities."""
     
-    def __init__(self, openai_client: OpenAIClient, model: str = 'gpt-4.1-nano-2025-04-14'):
+    def __init__(self, openai_client: OpenAIClient, model: str = 'gpt-4.1-nano'):
         self.openai_client = openai_client
         self.model = model
         self.yes_token_id = YES_TOKEN_ID
@@ -66,7 +66,7 @@ Is this text snippet relevant to the query? Answer only 'Yes' or 'No'."""
     
     def rerank_snippets(self, query: str, snippets: List[str], 
                        top_k: int) -> List[Dict[str, Union[str, Optional[float]]]]:
-        """Rerank snippets using GPT-4.1-nano with logit bias and log probabilities."""
+        """Rerank snippets using GPT-5-nano with logit bias and log probabilities."""
         if not snippets:
             return []
         

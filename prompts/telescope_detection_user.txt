@@ -1,0 +1,17 @@
+Analyze this paper content and identify which telescopes (CHANDRA, HST, JWST) are mentioned:
+
+PAPER CONTENT:
+{paper_text}
+
+KEYWORD SCREENING CONTEXT:
+{keyword_context}
+
+Based on the paper content above, identify ALL telescopes from the supported list (CHANDRA, HST, JWST) that are actually discussed in this paper. Return an empty list if none are found.
+
+Pay attention to:
+- Direct telescope names and acronyms
+- Telescope-specific instruments mentioned
+- Context indicating telescope usage (observations, data analysis, technical descriptions)
+- Avoiding false positives (people named Webb, Hubble the person, Chandra as a person/place)
+
+Consider the entire paper context, not just isolated keywords.

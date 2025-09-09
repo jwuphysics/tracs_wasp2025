@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Optional, Dict, Any, Type
+from typing import Optional, Dict, Any, Type, List
 
 from openai import OpenAI, BadRequestError
 from pydantic import BaseModel, ValidationError
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class OpenAIClient:
     """Wrapper for OpenAI API interactions."""
     
-    def __init__(self, api_key: str, model: str = 'gpt-4.1-mini-2025-04-14'):
+    def __init__(self, api_key: str, model: str = 'gpt-5-mini'):
         self.client = OpenAI(api_key=api_key, max_retries=2)
         self.model = model
         
@@ -25,15 +25,22 @@ class OpenAIClient:
                 logger.error("System or User prompt is empty. Cannot call OpenAI.")
                 return {"error": "empty_prompt", "message": "System or User prompt was empty."}
 
-            result = self.client.beta.chat.completions.parse(
-                model=self.model,
-                messages=[
+            # Only apply reasoning_effort for gpt-o1-mini and gpt-o1-preview models
+            kwargs = {
+                "model": self.model,
+                "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                response_format=response_model,
-                timeout=60 
-            )
+                "response_format": response_model,
+                "timeout": 60
+            }
+            
+            # Add reasoning_effort only for gpt-5-mini
+            if self.model == "gpt-5-mini":
+                kwargs["reasoning_effort"] = "minimal"
+
+            result = self.client.beta.chat.completions.parse(**kwargs)
 
             parsed_object = result.choices[0].message.parsed
             if parsed_object:
@@ -84,15 +91,21 @@ class OpenAIClient:
         
         try:
             # Step 1: Get reasoning and quotes only
-            reasoning_result = self.client.beta.chat.completions.parse(
-                model=self.model,
-                messages=[
+            kwargs_reasoning = {
+                "model": self.model,
+                "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                response_format=TelescopeClassificationReasoningModel,
-                timeout=60
-            )
+                "response_format": TelescopeClassificationReasoningModel,
+                "timeout": 60
+            }
+            
+            # Add reasoning_effort only for gpt-5-mini
+            if self.model == "gpt-5-mini":
+                kwargs_reasoning["reasoning_effort"] = "minimal"
+                
+            reasoning_result = self.client.beta.chat.completions.parse(**kwargs_reasoning)
             
             reasoning_data = reasoning_result.choices[0].message.parsed
             if not reasoning_data:
@@ -101,8 +114,21 @@ class OpenAIClient:
                 
             reasoning_dict = reasoning_data.model_dump()
             
-            # Step 2: Score based on the reasoning  
-            scoring_prompt = f"""Based on this analysis of {telescope} telescope classification evidence:
+            # Step 2: Score based on the reasoning
+            if telescope == "NONE":
+                scoring_prompt = f"""Based on this analysis of a paper where no supported space telescopes (CHANDRA, HST, JWST) were detected:
+
+REASONING: {reasoning_dict['reason']}
+
+Based on this reasoning, determine the appropriate classification for this NONE paper:
+- science: False (no supported telescope data used)
+- instrumentation: False (no supported telescope technical aspects)  
+- mention: True if paper discusses astronomy/astrophysics topics but uses ground-based observations, theory, or other telescopes
+- not_telescope: True if the reasoning indicates this is about a completely different field, false references, or grant-only mentions
+
+For NONE papers: Either mention=True (legitimate astronomy without supported telescopes) OR not_telescope=True (false positive/unrelated), but not both."""
+            else:
+                scoring_prompt = f"""Based on this analysis of {telescope} telescope classification evidence:
 
 REASONING: {reasoning_dict['reason']}
 
@@ -114,14 +140,20 @@ Based on this reasoning, determine the boolean classifications for this paper:
 
 Remember: A paper can have multiple True values, but if science or instrumentation is True, mention should be False."""
             
-            scoring_result = self.client.beta.chat.completions.parse(
-                model=self.model,
-                messages=[
+            kwargs_scoring = {
+                "model": self.model,
+                "messages": [
                     {"role": "user", "content": scoring_prompt}
                 ],
-                response_format=TelescopeClassificationScoringModel,
-                timeout=60
-            )
+                "response_format": TelescopeClassificationScoringModel,
+                "timeout": 60
+            }
+            
+            # Add reasoning_effort only for gpt-5-mini
+            if self.model == "gpt-5-mini":
+                kwargs_scoring["reasoning_effort"] = "minimal"
+                
+            scoring_result = self.client.beta.chat.completions.parse(**kwargs_scoring)
             
             scoring_data = scoring_result.choices[0].message.parsed
             if not scoring_data:
@@ -139,6 +171,13 @@ Remember: A paper can have multiple True values, but if science or instrumentati
             # Add legacy science score for backward compatibility
             result["science_score"] = 1.0 if result["science"] else 0.0
             
+            # Validation: Check for consistency between reasoning and classifications
+            validation_warnings = self._validate_classification_consistency(result, telescope)
+            if validation_warnings:
+                logger.warning(f"Classification consistency warnings for {telescope}: {'; '.join(validation_warnings)}")
+                # Add validation info to the result for debugging
+                result["validation_warnings"] = validation_warnings
+            
             return result
                 
         except Exception as e:
@@ -150,15 +189,21 @@ Remember: A paper can have multiple True values, but if science or instrumentati
         from ..models import TelescopeIdentificationModel
         
         try:
-            result = self.client.beta.chat.completions.parse(
-                model=self.model,
-                messages=[
+            kwargs_identification = {
+                "model": self.model,
+                "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                response_format=TelescopeIdentificationModel,
-                timeout=60
-            )
+                "response_format": TelescopeIdentificationModel,
+                "timeout": 60
+            }
+            
+            # Add reasoning_effort only for gpt-5-mini
+            if self.model == "gpt-5-mini":
+                kwargs_identification["reasoning_effort"] = "minimal"
+                
+            result = self.client.beta.chat.completions.parse(**kwargs_identification)
             
             parsed_data = result.choices[0].message.parsed
             if not parsed_data:
@@ -170,3 +215,48 @@ Remember: A paper can have multiple True values, but if science or instrumentati
         except Exception as e:
             logger.error(f"Telescope identification failed: {e}")
             return None
+    
+    def _validate_classification_consistency(self, result: Dict, telescope: str) -> List[str]:
+        """
+        Validate consistency between reasoning text and boolean classifications.
+        Returns list of warnings if inconsistencies detected.
+        """
+        warnings = []
+        reason = result.get("reason", "").lower()
+        quotes = [q.lower() for q in result.get("quotes", [])]
+        all_text = reason + " " + " ".join(quotes)
+        
+        science = result.get("science", False)
+        instrumentation = result.get("instrumentation", False)
+        mention = result.get("mention", False)
+        not_telescope = result.get("not_telescope", False)
+        
+        # Check for telescope name mentions in reasoning vs not_telescope classification
+        if telescope != "NONE":
+            telescope_lower = telescope.lower()
+            if not_telescope and any(telescope_lower in text for text in [reason] + quotes):
+                if any(phrase in all_text for phrase in ["observation", "data", "analysis", "image", "spectrum", "photometry"]):
+                    warnings.append(f"Classified as not_telescope but reasoning discusses {telescope} observations/data")
+        
+        # Check for science indicators in reasoning vs science classification
+        science_indicators = ["our ", "we observed", "we analyzed", "we found", "new results", "our data", "our observations"]
+        if not science and any(indicator in all_text for indicator in science_indicators):
+            warnings.append("Science indicators in reasoning but science=False")
+        
+        # Check for instrumentation indicators vs instrumentation classification  
+        instrument_indicators = ["calibration", "pipeline", "instrument", "detector", "technical", "hardware", "software"]
+        if not instrumentation and any(indicator in all_text for indicator in instrument_indicators):
+            warnings.append("Instrumentation indicators in reasoning but instrumentation=False")
+        
+        # Check logic rules: if science or instrumentation is True, mention should be False
+        if (science or instrumentation) and mention:
+            warnings.append("Logic violation: science/instrumentation=True but mention=True (should be False)")
+            
+        # For NONE papers, check if reasoning mentions actual telescopes
+        if telescope == "NONE" and not_telescope:
+            real_telescopes = ["chandra", "hubble", "hst", "jwst", "webb", "spitzer", "kepler"]
+            mentioned_telescopes = [tel for tel in real_telescopes if tel in all_text]
+            if mentioned_telescopes:
+                warnings.append(f"NONE paper classified not_telescope but reasoning mentions: {', '.join(mentioned_telescopes)}")
+        
+        return warnings

@@ -21,9 +21,10 @@ Classify this paper into the appropriate categories. The 'quotes' MUST be exact 
 - False if the paper qualifies as science or instrumentation
 
 **not_telescope** (True/False):
-- True if references that might be confused with {telescope} are actually about something else entirely
-- Look for disambiguation clues in the context
-- False if the paper actually discusses the {telescope} telescope
+- True ONLY if references are clear false positives: "Chandra" the person, "Hubble" the scientist, grants without data usage
+- Look for disambiguation clues that indicate it's NOT about the telescope
+- False if the paper actually mentions or discusses the {telescope} telescope in any astronomical context
+- When in doubt between mention and not_telescope, choose mention
 
 **Important Notes:**
 - A paper can have multiple categories True (e.g., both science and instrumentation)

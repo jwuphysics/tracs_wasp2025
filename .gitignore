@@ -13,3 +13,10 @@ texts/
 results*
 CLAUDE.md
 data
+
+# Temporary test and development files
+test_fixes.py
+todo.md
+analysis/
+evaluation/
+output/
