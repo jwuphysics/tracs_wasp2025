@@ -1,29 +1,45 @@
-Analyze the following excerpts from an astronomy paper to determine the likelihood it presents new science results based on the **{mission} mission**. 
-
-You **must ignore** citations to other missions or other works that use this mission. **Only consider if the snippets support that this current paper is a {mission} science paper.**
+Analyze the following excerpts from an astronomy paper to classify how it relates to the **{telescope}** telescope for bibliography curation purposes.
 
 **Task:**
-Determine whether *this paper* is a {mission} science paper. Return a JSON object adhering to the specified format. The 'quotes' MUST be exact substrings copied from the provided excerpts below. 
+Classify this paper into the appropriate categories. The 'quotes' MUST be exact substrings copied from the provided excerpts below.
 
-**Notes:**
-*   Quotes like "our {mission} data" or "our new findings with {mission}" indicate a high "science" score.
-*   Quotes like "Recent results from {mission}" or "Future {mission} observations" do not support a high "science" score and should not be included.
-*   Quotes referencing other {mission} papers should not be considered - only focus on whether THIS paper presents new {mission} science.
-*   Just because {mission} is frequently mentioned does not mean that this paper should be given a high "science" score.
+**Classification Guidelines:**
 
-**Scoring Guidelines:**
-*   **0.0**: No mention of {mission} or only mentions future plans, proposals, simulations, or funding without presenting data/results from it within these excerpts.
-*   **0.1-0.3**: Mentions {mission} or its instruments, maybe cites prior {mission} work, but the excerpts don't clearly show new analysis or results from {mission} in *this* paper. Could be purely motivational or comparative discussion.
-*   **0.4-0.6**: Moderate indication that {mission} data/results are used, but the excerpts lack definitive statements of *new* findings derived from it. Cannot simply cite other {mission} papers.
-*   **0.7-0.9**: Strong indication from the excerpts that {mission} observations are presented or analyzed to derive *new* scientific results in this paper.
-*   **1.0**: Excerpts explicitly state that {mission} observations/data were obtained/analyzed for this work and *new* results are presented.
+**science** (True/False): 
+- True if excerpts show the paper uses {telescope} observational data to obtain NEW scientific results
+- Look for phrases like "our {telescope} observations", "we analyzed {telescope} data", "new {telescope} results"
+- False if only citing previous {telescope} work or discussing future possibilities
+
+**instrumentation** (True/False):
+- True if excerpts describe technical aspects, calibration, data processing pipeline, or instrumentation of {telescope}
+- Look for discussions of instruments, software, methodologies, engineering aspects
+- Can be True alongside science if the paper presents both new science and technical contributions
+
+**mention** (True/False): 
+- True if paper references {telescope} but doesn't produce new scientific results or contribute to understanding it
+- Includes comparisons, historical context, brief references
+- False if the paper qualifies as science or instrumentation
+
+**not_telescope** (True/False):
+- True if references that might be confused with {telescope} are actually about something else entirely
+- Look for disambiguation clues in the context
+- False if the paper actually discusses the {telescope} telescope
+
+**Important Notes:**
+- A paper can have multiple categories True (e.g., both science and instrumentation)
+- If science or instrumentation is True, then mention should be False
+- Focus ONLY on the provided excerpts
 
 **Excerpts:**
 {snippets_text}
 
 **JSON Output Format:**
 {{
+    "telescope": "{telescope}",
+    "science": <true/false>,
+    "instrumentation": <true/false>, 
+    "mention": <true/false>,
+    "not_telescope": <true/false>,
     "quotes": ["Exact quote 1 from excerpts...", "Exact quote 2..."],
-    "reason": "Justification based ONLY on the excerpts.",
-    "science": <float between 0.0 and 1.0>
+    "reason": "Justification for each classification based ONLY on the excerpts."
 }}

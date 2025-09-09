@@ -16,7 +16,7 @@ class CohereClient:
         self.model = model
         
         if not api_key:
-            logger.warning("COHERE_API_KEY not found. Reranking will be skipped (using original order).")
+            logger.info("COHERE_API_KEY not found. Cohere reranking unavailable (GPT reranker will be used if enabled).")
         else:
             self.client = cohere.ClientV2(api_key)
     

@@ -9,8 +9,10 @@ logger = logging.getLogger(__name__)
 
 PROMPT_FILES = {
     'science_system': 'science_system.txt',
-    'science_user': 'science_user.txt',
+    'science_user': 'science_user.txt', 
     'rerank_science_query': 'rerank_science_query.txt',
+    'telescope_identification_system': 'telescope_identification_system.txt',
+    'telescope_identification_user': 'telescope_identification_user.txt',
 }
 
 

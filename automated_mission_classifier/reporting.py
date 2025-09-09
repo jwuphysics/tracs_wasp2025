@@ -204,3 +204,96 @@ class ReportGenerator:
         except Exception as e:
             logger.error(f"Failed to save CSV report file {csv_path}: {e}")
             return None
+    
+    def generate_competition_csv(self, batch_identifier: str, cache_files: Dict[str, Path], limit_papers: Optional[int] = None) -> Optional[Path]:
+        """Generate CSV in TRACS competition format: Id,telescope,science,instrumentation,mention,not_telescope"""
+        science_results = load_cache(cache_files['science'])
+        papers_cache = load_cache(cache_files['papers'])
+        
+        # Create CSV data for competition submission
+        csv_data = []
+        
+        for paper_id, paper_info in papers_cache.items():
+            bibcode = paper_info.get("bibcode", paper_id)
+            
+            # Start with default values
+            row = {
+                "Id": bibcode,
+                "telescope": "NONE",  # Default fallback
+                "science": False,
+                "instrumentation": False, 
+                "mention": False,
+                "not_telescope": False
+            }
+            
+            # Check if paper had telescope classification analysis
+            if paper_id in science_results:
+                result = science_results[paper_id]
+                
+                if isinstance(result, dict) and "error" not in result:
+                    # Get telescope from analysis result or use default logic
+                    detected_telescope = result.get("telescope", "NONE")
+                    if detected_telescope in ["CHANDRA", "HST", "JWST"]:
+                        row["telescope"] = detected_telescope
+                    
+                    # Get classification labels with proper boolean conversion
+                    science_val = result.get("science", False)
+                    if isinstance(science_val, (int, float)):
+                        row["science"] = science_val >= 0.5
+                    else:
+                        row["science"] = bool(science_val)
+                        
+                    row["instrumentation"] = bool(result.get("instrumentation", False))
+                    row["mention"] = bool(result.get("mention", False))
+                    row["not_telescope"] = bool(result.get("not_telescope", False))
+                    
+                    # Handle legacy science score for backward compatibility
+                    if "science" not in result and "science_score" in result:
+                        row["science"] = result.get("science_score", 0.0) >= 0.5
+                        
+            # If no telescope detected and no classification, mark as mention by default
+            if not any([row["science"], row["instrumentation"], row["not_telescope"]]):
+                row["mention"] = True
+                
+            csv_data.append(row)
+        
+        # Sort by bibcode for consistent output
+        csv_data.sort(key=lambda x: x['Id'])
+        
+        # Write competition CSV file
+        csv_filename = f"{batch_identifier}_competition"
+        if limit_papers is not None:
+            csv_filename += f"_limit{limit_papers}"
+        csv_filename += ".csv"
+        csv_path = self.results_dir / csv_filename
+        
+        try:
+            with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+                fieldnames = ["Id", "telescope", "science", "instrumentation", "mention", "not_telescope"]
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(csv_data)
+                
+            logger.info(f"Competition CSV generated: {csv_path}")
+            logger.info(f"Total submissions: {len(csv_data)}")
+            
+            # Print some stats
+            telescope_counts = {}
+            label_counts = {"science": 0, "instrumentation": 0, "mention": 0, "not_telescope": 0}
+            
+            for row in csv_data:
+                telescope = row["telescope"]
+                telescope_counts[telescope] = telescope_counts.get(telescope, 0) + 1
+                
+                for label in ["science", "instrumentation", "mention", "not_telescope"]:
+                    if row[label]:
+                        label_counts[label] += 1
+            
+            logger.info(f"Telescope distribution: {telescope_counts}")
+            logger.info(f"Label distribution: {label_counts}")
+            
+            return csv_path
+            
+        except Exception as e:
+            logger.error(f"Failed to save competition CSV file {csv_path}: {e}")
+            return None

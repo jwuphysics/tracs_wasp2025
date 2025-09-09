@@ -1,1 +1,1 @@
-Do these text snippets originate from a paper that presents new scientific results derived from the {mission} mission? References to other papers, missions, or previous or future observations do not count.
+Do these text snippets discuss or reference the {telescope} telescope in any capacity (science, instrumentation, mention, or confusion with other entities)? Look for telescope names, instrument names, or related terminology.

@@ -15,17 +15,27 @@ logger = logging.getLogger(__name__)
 class ScienceAnalyzer:
     """Analyzes papers for mission-specific science content."""
     
-    # Mission-specific keyword mappings
-    MISSION_KEYWORDS = {
+    # Telescope-specific keyword mappings for TRACS dataset
+    TELESCOPE_KEYWORDS = {
+        "CHANDRA": [
+            "chandra", "cxc", "cxo", "axaf", "chandra x-ray observatory",
+            "acis", "hrc", "hetg", "letg", "hrma", "pcad", "ephin",
+            "chandra data", "x-ray", "xray"
+        ],
         "HST": [
-            "hst", "hubble",
+            "hst", "hubble", "hubble space telescope",
             "wfc3", "acs", "stis", "cos", "nicmos", 
-            "wfpc2", # "foc", "fos", "ghrs", "hsp", "wfpc"
+            "wfpc2", "foc", "fos", "ghrs", "hsp", "wfpc"
         ],
         "JWST": [
             "jwst", "james webb space telescope", "webb", "ngst",
             "nircam", "nirspec", "miri", "niriss", "fgs",
         ],
+        "NONE": [
+            # Generic terms that might help identify papers not about specific telescopes
+            "ground-based", "theoretical", "simulation", "model"
+        ],
+        # Legacy support
         "TESS": [
             "tess", "transiting exoplanet survey satellite",
             "tess data", "tess observations", "tess photometry",
@@ -59,6 +69,9 @@ class ScienceAnalyzer:
         ]
     }
     
+    # Legacy alias for backward compatibility
+    MISSION_KEYWORDS = TELESCOPE_KEYWORDS
+    
     def __init__(self, 
                  openai_client: OpenAIClient,
                  cohere_client: CohereClient,
@@ -77,10 +90,17 @@ class ScienceAnalyzer:
         self.top_k_snippets = top_k_snippets
         self.reranker_threshold = reranker_threshold
         
-        # Set mission-specific keywords
-        if self.mission not in self.MISSION_KEYWORDS:
-            raise ValueError(f"Unsupported mission: {self.mission}. Supported missions: {list(self.MISSION_KEYWORDS.keys())}")
-        self.science_keywords = self.MISSION_KEYWORDS[self.mission]
+        # Set telescope-specific keywords
+        if self.mission == "MULTI":
+            # For multi-telescope mode, combine all keywords
+            self.science_keywords = []
+            for tel in ["CHANDRA", "HST", "JWST"]:
+                self.science_keywords.extend(self.TELESCOPE_KEYWORDS[tel])
+        elif self.mission not in self.TELESCOPE_KEYWORDS:
+            raise ValueError(f"Unsupported telescope: {self.mission}. Supported telescopes: {list(self.TELESCOPE_KEYWORDS.keys())}")
+        else:
+            self.science_keywords = self.TELESCOPE_KEYWORDS[self.mission]
+            
         self.science_keywords_lower = sorted(
             [k.lower() for k in self.science_keywords], 
             key=len, reverse=True
@@ -120,7 +140,7 @@ class ScienceAnalyzer:
             return {"science": -1.0, "reason": "Analysis failed: Missing rerank science query prompt", 
                    "quotes": [], "error": "prompt_missing"}
 
-        rerank_query = rerank_query.format(mission=self.mission)
+        rerank_query = rerank_query.format(telescope=self.mission)
 
         # Use GPT reranker if available, otherwise fall back to Cohere
         if self.gpt_reranker:
@@ -182,20 +202,36 @@ class ScienceAnalyzer:
                    "quotes": [], "error": "prompt_missing"}
         
         try:
-            user_prompt = user_prompt_template.format(snippets_text=snippets_text, mission=self.mission)
+            user_prompt = user_prompt_template.format(snippets_text=snippets_text, telescope=self.mission)
         except KeyError as e:
             logger.error(f"Failed to format science user prompt - missing placeholder {e}")
             return {"science": -1.0, "reason": "Analysis failed: Prompt formatting error", 
                    "quotes": [], "error": "prompt_format_error"}
 
-        # Call LLM with separated analysis
-        llm_result = self.openai_client.call_separated_analysis(
+        # Call LLM with telescope classification
+        llm_result = self.openai_client.call_telescope_classification(
             system_prompt, user_prompt, self.mission
         )
 
         if llm_result is None or "error" in llm_result:
             error_reason = f"LLM analysis failed: {llm_result.get('message', 'Unknown error') if llm_result else 'Unknown error'}"
             error_type = llm_result.get('error', 'unknown') if llm_result else 'unknown'
+            # Return in legacy format for backward compatibility
             return {"science": -1.0, "reason": error_reason, "quotes": [], "error": error_type}
 
-        return llm_result
+        # Convert to legacy format for backward compatibility
+        legacy_result = {
+            "science": 1.0 if llm_result.get("science", False) else 0.0,
+            "reason": llm_result.get("reason", ""),
+            "quotes": llm_result.get("quotes", [])
+        }
+        
+        # Add new telescope classification fields
+        legacy_result.update({
+            "telescope": llm_result.get("telescope", self.mission),
+            "instrumentation": llm_result.get("instrumentation", False),
+            "mention": llm_result.get("mention", False), 
+            "not_telescope": llm_result.get("not_telescope", False)
+        })
+        
+        return legacy_result

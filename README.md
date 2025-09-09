@@ -1,142 +1,86 @@
-# Automated Mission Classifier
+# TRACS Telescope Classification System
 
-This tool classifies whether astronomical papers are relevant to specific space missions (TESS, JWST, GALEX, PANSTARRS, etc.) using LLM analysis of full-text content.
+**Automated telescope bibliography curation using Large Language Models**
+
+This system classifies astronomical papers by telescope relevance and usage type for bibliography curation. Originally developed for the WASP2025 shared task using the TRACS (Telescope Bibliography Classification) dataset, it identifies how papers relate to major space telescopes (CHANDRA, HST, JWST) and ground truth classification.
+
+## What This System Does
+
+The system analyzes astronomical papers and determines:
+- **Which telescope** the paper primarily discusses (CHANDRA, HST, JWST, or none)
+- **How the paper uses the telescope** across four categories:
+  - **Science**: Uses telescope data to obtain new scientific results
+  - **Instrumentation**: Describes technical aspects, calibration, or instruments
+  - **Mention**: References telescope without new results or contributions  
+  - **Not Telescope**: Contains references confused with telescope but about something else
+
+This classification supports librarians and data curators in building accurate telescope bibliographies for impact assessment and data discovery.
 
 ## Quick Start
-There are two main ways to use the Automated Mission Classifier:
 
-**Single paper mode**: `amc --mission MISSION_NAME --bibcode BIBCODE`. For example:
-
+**Process TRACS competition dataset:**
 ```bash
-amc --mission TESS --bibcode 2020MNRAS.491.2982E
+# Download TRACS test data and process for competition submission
+python tracs_data_loader.py
+python process_all_tracs_test.py
 ```
 
-**Batch mode**: `amc --mission MISSION_NAME --batch-mode MODE`. For example:
-
+**Analyze individual papers:**
 ```bash
-# Process specific bibcodes from a file
-amc --mission JWST --batch-mode bibcodes.txt
-
-# Process comma-separated bibcodes
-amc --mission TESS --batch-mode "2020MNRAS.491.2982E,2020MNRAS.495.2844S"
-
-# Process all papers in the dataset
-amc --mission GALEX --batch-mode all
+# Classify a specific paper
+python -m automated_mission_classifier --mission MULTI --bibcode 2012A&A...537A..18M --data-file data/tracs_test_combined.json
 ```
 
 ## Installation
 
-We recommend using version Python 3.10 or higher, and using a virtual environment. This has so far only been tested on macOS and Linux.
+**Prerequisites**: Python 3.10+, OpenAI API key
 
-To install from the source, first copy the repository to your computer
 ```bash
-git clone git@github.com:jwuphysics/automated-mission-classifier.git
-
-cd automated-mission-classifier
-```
-
-Then, create a virtual environment. An easy way to do this is using `uv`:
-```bash
+# Clone and setup
+git clone https://github.com/jwuphysics/tracs_wasp2025
+cd tracs_wasp2025
 uv venv && source .venv/bin/activate
 uv sync
-```
 
-Alternatively, you could install with python's built in venv and pip:
-```bash
-python3 -m venv .venv
-source .venv/bin/activate 
-# on Windows, instead do 
-# .venv\Scripts\activate
-
-pip install -e . # install in editable mode
-```
-
-### Environment Variables
-You must set API keys to enable LLM analysis. Create a `.env` file in the project root with the following contents:
-```bash
-export OPENAI_API_KEY=your_openai_key_here  # Required for all classification
-export COHERE_API_KEY=your_cohere_key_here  # Optional - only for legacy reranking (GPT reranker used by default)
+# Set your OpenAI API key
+export OPENAI_API_KEY=your_openai_key_here
 ```
 
 
-## Additional Usage Patterns
+## How It Works
 
-View all options using `amc --help`. Here are some common usage patterns:
+The system processes astronomical papers through several stages:
 
-```bash
-# Specify a different GPT model
-amc --mission TESS --bibcode 2020MNRAS.491.2982E --gpt-model gpt-4.1-mini-2025-04-14
+1. **Text Analysis**: Extracts relevant content from paper title, abstract, body text, acknowledgments, and grants
+2. **Telescope Identification**: Uses telescope-specific keywords and LLM analysis to identify which telescope (if any) the paper discusses
+3. **Content Reranking**: Uses GPT-4.1-nano to identify and rank the most relevant text passages for classification
+4. **Multi-Label Classification**: Applies specialized LLM prompts to classify papers into the four telescope usage categories
+5. **Output Generation**: Produces structured results in both detailed JSON and competition CSV formats
 
-# Force reprocessing and save to different directory
-amc --mission HST --bibcode 2020MNRAS.491.2982E --reprocess --output-dir ./results-reprocessed
+## Results and Output
 
-# Use legacy Cohere reranker instead of GPT
-amc --mission GALEX --bibcode 2020MNRAS.491.2982E --no-gpt-reranker
-
-# Limit batch processing for testing
-amc --mission TESS --batch-mode all --limit-papers 10
-
-# Adjust classification thresholds
-amc --mission JWST --bibcode 2020MNRAS.491.2982E --science-threshold 0.7 --reranker-threshold 0.1
+**Competition CSV Format** (`*_competition.csv`):
+```csv
+Id,telescope,science,instrumentation,mention,not_telescope
+2012A&A...537A..18M,CHANDRA,False,False,True,False
+1998SPIE.3356.1078P,CHANDRA,False,True,False,False
 ```
 
-## Key Options
+**Detailed Analysis** (`*_report.json`):
+- Paper-by-paper classification reasoning and supporting quotes
+- Processing statistics and performance metrics
+- Model configuration and parameters used
 
-**Required:**
--   `--mission MISSION`: Mission name (e.g., TESS, JWST, GALEX, PANSTARRS) for classification
--   `--bibcode BIBCODE` OR `--batch-mode BATCH_MODE`: Either a specific bibcode for single paper analysis, or batch mode ('all', file path, or comma-separated bibcodes)
+## Supported Telescopes
 
-**Data and Output:**
--   `--data-file DATA_FILE`: Path to JSON data file containing paper records (default: `data/combined_dataset_2025_03_25.json`)
--   `--output-dir OUTPUT_DIR, -o OUTPUT_DIR`: Directory where `results/` subdirectory will be created (default: current directory)
--   `--prompts-dir PROMPTS_DIR, -p PROMPTS_DIR`: Directory containing LLM prompt templates (default: `./prompts`)
+- **CHANDRA**: X-ray Observatory (including ACIS, HRC, HETG, LETG instruments)
+- **HST**: Hubble Space Telescope (including WFC3, ACS, STIS, COS, NICMOS, WFPC2)
+- **JWST**: James Webb Space Telescope (including NIRCam, NIRSpec, MIRI, NIRISS, FGS)
+- **NONE**: Papers not primarily about any specific telescope
 
-**Analysis Parameters:**
--   `--science-threshold SCIENCE_THRESHOLD`: Threshold for classifying papers as mission science (0-1, default: `0.5`)
--   `--reranker-threshold RERANKER_THRESHOLD`: Minimum reranker score to proceed with LLM analysis (0-1, default: `0.05`)
--   `--top-k-snippets TOP_K_SNIPPETS`: Number of top reranked snippets to send to LLM (default: `5`)
--   `--context-sentences CONTEXT_SENTENCES`: Sentences before/after keyword sentences in snippets (default: `3`)
+## Citation and Acknowledgments
 
-**Model Configuration:**
--   `--gpt-model GPT_MODEL`: OpenAI GPT model for classification (default: `gpt-4.1-mini-2025-04-14`)
--   `--cohere-reranker-model COHERE_RERANKER_MODEL`: Cohere reranker model (default: `rerank-v3.5`)
--   `--no-gpt-reranker`: Use legacy Cohere reranker instead of GPT-4.1-nano reranker
+This work was developed for the WASP2025 shared task on telescope bibliography classification. The TRACS dataset is available on Hugging Face at `adsabs/TRACS`. Credit to Felix Grezes. TRACS @ WASP 2025. https://kaggle.com/competitions/tracs-wasp-2025, 2025. Kaggle.
 
-**Processing Options:**
--   `--reprocess`: Force reprocessing, ignoring caches
--   `--limit-papers LIMIT_PAPERS`: Limit processing to first N papers (batch mode only)
-
-**API Keys:**
--   `--openai-key OPENAI_KEY`: OpenAI API key (or use `OPENAI_API_KEY` env var)
--   `--cohere-key COHERE_KEY`: Cohere API key (or use `COHERE_API_KEY` env var; only needed for legacy reranking)
-
-
-## Outputs
-
-### Batch Mode
-Generates reports in the `results/` directory:
-- `{data_filename}_report.json`: Summary report with paper counts and analysis results
-- `{data_filename}_report.csv`: CSV export with all papers and their classification results
-- Cache files: `{mission}_batch_science.json`, `{mission}_batch_snippets.json`, etc.
-
-### Single Paper Mode
-Outputs JSON to stdout with classification results, including:
-- Mission relevance score and classification
-- Supporting quotes from the paper
-- Analysis metadata and timestamps
-
-## Data Requirements
-
-The tool expects a JSON data file containing paper records with the following structure:
-```json
-[
-  {
-    "bibcode": "2020MNRAS.491.2982E",
-    "title": " HD 213885b: a transiting 1-d-period super-Earth with an Earth-like composition around a bright (V = 7.9) star unveiled by TESS",
-    "body": "Full text content of the paper..."
-  }
-]
-```
-
-Other fields can also be included as metadata. The default data file is `data/combined_dataset_2025_03_25.json`.
+For technical details about the system architecture and implementation, see `CLAUDE.md`.
 

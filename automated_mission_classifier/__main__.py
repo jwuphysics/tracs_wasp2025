@@ -1,12 +1,12 @@
-"""Command-line interface for Automated Mission Classifier."""
+"""Command-line interface for Multi-Telescope Classifier."""
 
 import argparse
 import logging
-import re
 import sys
 from pathlib import Path
 
-from .analyzer import AutomatedMissionClassifier
+from .multi_classifier import MultiTelescopeClassifier
+from .csv_classifier import CSVTelescopeClassifier
 
 logging.basicConfig(
     level=logging.INFO,
@@ -17,62 +17,45 @@ logger = logging.getLogger(__name__)
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Classify papers as science or non-science for specified MAST missions using LLM analysis of full-text content.",
+        description="Multi-telescope classification system for WASP-2025 competition. Identifies telescopes in papers and classifies relationships (science/instrumentation/mention/not_telescope).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
-    # Required arguments
-    parser.add_argument(
-        "--mission",
-        required=True,
-        help="Mission name (e.g., TESS, GALEX, PANSTARRS) for classification"
-    )
-    parser.add_argument(
+    # Input file (mutually exclusive group)
+    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group.add_argument(
         "--data-file",
         type=Path,
-        default=Path("./data/combined_dataset_2025_03_25.json"),
         help="Path to JSON data file containing paper records"
     )
+    input_group.add_argument(
+        "--csv-file",
+        type=Path,
+        help="Path to CSV data file with combined Id field (bibcode_telescope)"
+    )
     
-    # Mode selection
-    mode_group = parser.add_mutually_exclusive_group(required=True)
-    mode_group.add_argument(
-        "--bibcode", 
-        help="Specific bibcode to process for single paper analysis."
-    )
-    mode_group.add_argument(
-        "--batch-mode", 
-        help="Batch processing mode: 'all' for all papers, path to file with bibcodes (one per line), or comma-separated list of bibcodes."
-    )
-
+    # Optional arguments
     parser.add_argument(
         "--output-dir", "-o",
         type=Path,
-        default=Path("./"),
-        help="Project directory where papers/, texts/, and results/ subdirectories will be created. Defaults to current directory."
+        default=Path("./output"),
+        help="Directory for output files (CSV and reports)"
     )
     parser.add_argument(
         "--prompts-dir", "-p",
         type=Path,
         default=Path("./prompts"), 
-        help="Directory containing LLM prompt template files (e.g., science_system.txt)."
+        help="Directory containing prompt template files"
     )
     parser.add_argument(
-        "--science-threshold",
-        type=float,
-        default=0.5, 
-        help="Threshold for classifying papers as mission science (0-1)"
+        "--gpt-model",
+        default="gpt-5-mini", 
+        help="GPT model for telescope classification"
     )
     parser.add_argument(
-        "--reranker-threshold",
-        type=float,
-        default=0.001,
-        help="Minimum reranker score for the top snippet to proceed with LLM analysis. Scores below this threshold will skip the LLM call (range 0-1)."
-    )
-    parser.add_argument(
-        "--reprocess",
-        action="store_true",
-        help="Force reprocessing of downloaded/analyzed papers"
+        "--reranker-model",
+        default="gpt-4.1-nano",
+        help="GPT model for snippet reranking"
     )
     parser.add_argument(
         "--top-k-snippets",
@@ -84,103 +67,151 @@ def main():
         "--context-sentences",
         type=int,
         default=3, 
-        help="Number of sentences before and after a keyword sentence to include in a snippet"
+        help="Number of sentences before and after a keyword to include in snippets"
     )
     parser.add_argument(
-        "--cohere-reranker-model",
-        default="rerank-v3.5", 
-        help="Cohere reranker model name (when using legacy reranking)"
-    )
-    parser.add_argument(
-        "--gpt-model",
-        default="gpt-4.1-mini-2025-04-14", 
-        help="GPT scoring model for mission science classification"
-    )
-    parser.add_argument(
-        "--no-gpt-reranker",
-        action="store_true",
-        help="Use the legacy Cohere reranker instead of the default GPT-4.1-nano reranker"
+        "--reranker-threshold",
+        type=float,
+        default=0.001,
+        help="Minimum reranker score for snippets to proceed with LLM analysis"
     )
     parser.add_argument(
         "--limit-papers",
         type=int,
-        help="Limit processing to the first N papers (useful for testing). Only applies to batch mode."
+        help="Limit processing to the first N papers (useful for testing, JSON mode)"
     )
-    parser.add_argument("--openai-key", help="OpenAI API key (uses OPENAI_API_KEY env var if not provided)")
-    parser.add_argument("--cohere-key", help="Cohere API key (uses COHERE_API_KEY env var if not provided; reranking skipped if missing)")
+    parser.add_argument(
+        "--limit-rows",
+        type=int,
+        help="Limit processing to the first N rows (useful for testing, CSV mode)"
+    )
+    parser.add_argument(
+        "--openai-key", 
+        help="OpenAI API key (uses OPENAI_API_KEY env var if not provided)"
+    )
+    parser.add_argument(
+        "--output-filename",
+        default="submission.csv",
+        help="Output CSV filename"
+    )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable verbose logging"
+    )
 
     args = parser.parse_args()
 
-    # Validate thresholds
-    if not 0 <= args.science_threshold <= 1:
-        parser.error("Science threshold must be between 0 and 1")
+    # Set logging level
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    # Validate arguments
+    if args.data_file and not args.data_file.exists():
+        parser.error(f"JSON data file not found: {args.data_file}")
     
-    # Validate limit-papers
+    if args.csv_file and not args.csv_file.exists():
+        parser.error(f"CSV data file not found: {args.csv_file}")
+        
     if args.limit_papers is not None and args.limit_papers < 1:
         parser.error("--limit-papers must be a positive integer")
+    
+    if args.limit_rows is not None and args.limit_rows < 1:
+        parser.error("--limit-rows must be a positive integer")
+    
+    # Determine processing mode
+    csv_mode = args.csv_file is not None
 
-    # Validate data file exists
-    if not args.data_file.exists():
-        parser.error(f"Data file not found: {args.data_file}")
-        
-    # Process batch mode argument
-    batch_mode_processed = None
-    if args.batch_mode:
-        if args.batch_mode.lower() == 'all':
-            batch_mode_processed = 'all'
-        elif Path(args.batch_mode).exists():
-            batch_mode_processed = args.batch_mode
-        elif ',' in args.batch_mode:
-            batch_mode_processed = [b.strip() for b in args.batch_mode.split(',') if b.strip()]
-        else:
-            parser.error("--batch-mode must be 'all', a file path, or comma-separated bibcodes")
-
-    # Create output/prompts directory if it doesn't exist
+    # Create directories
     try:
         args.output_dir.mkdir(parents=True, exist_ok=True)
-        args.prompts_dir.mkdir(parents=True, exist_ok=True)
+        if not args.prompts_dir.exists():
+            logger.warning(f"Prompts directory not found: {args.prompts_dir}")
     except Exception as e:
-        logger.error(f"Failed to create necessary directories ({args.output_dir}, {args.prompts_dir}): {e}")
+        logger.error(f"Failed to create output directory: {e}")
         sys.exit(1)
 
+    # Initialize and run classifier
     try:
-        analyzer = AutomatedMissionClassifier(
-            output_dir=args.output_dir,
-            data_file=args.data_file,
-            mission=args.mission,
-            bibcode=args.bibcode,
-            batch_mode=batch_mode_processed,
-            prompts_dir=args.prompts_dir, 
-            science_threshold=args.science_threshold,
-            reranker_threshold=args.reranker_threshold,
-            openai_key=args.openai_key,
-            cohere_key=args.cohere_key,
-            gpt_model=args.gpt_model,
-            cohere_reranker_model=args.cohere_reranker_model,
-            top_k_snippets=args.top_k_snippets,
-            context_sentences=args.context_sentences,
-            reprocess=args.reprocess,
-            use_gpt_reranker=not args.no_gpt_reranker,
-            limit_papers=args.limit_papers,
-        )
+        if csv_mode:
+            logger.info("Initializing CSV telescope classifier...")
+            
+            classifier = CSVTelescopeClassifier(
+                csv_file=args.csv_file,
+                output_dir=args.output_dir,
+                prompts_dir=args.prompts_dir,
+                openai_key=args.openai_key,
+                gpt_model=args.gpt_model,
+                reranker_model=args.reranker_model,
+                top_k_snippets=args.top_k_snippets,
+                context_sentences=args.context_sentences,
+                reranker_threshold=args.reranker_threshold,
+                limit_rows=args.limit_rows,
+            )
 
-        if analyzer.run_mode == "batch":
-            analyzer.run_batch() 
-        elif analyzer.run_mode == "single":
-            analyzer.process_single_paper(args.bibcode) 
+            logger.info("Processing CSV rows...")
+            results = classifier.process_rows()
+            processing_unit = "rows"
+        else:
+            logger.info("Initializing multi-telescope classifier...")
+            
+            classifier = MultiTelescopeClassifier(
+                data_file=args.data_file,
+                output_dir=args.output_dir,
+                prompts_dir=args.prompts_dir,
+                openai_key=args.openai_key,
+                gpt_model=args.gpt_model,
+                reranker_model=args.reranker_model,
+                top_k_snippets=args.top_k_snippets,
+                context_sentences=args.context_sentences,
+                reranker_threshold=args.reranker_threshold,
+                limit_papers=args.limit_papers,
+            )
+
+            logger.info("Processing papers...")
+            results = classifier.process_papers()
+            processing_unit = "papers"
+        
+        if not results:
+            logger.warning(f"No {processing_unit} were successfully processed")
+            sys.exit(1)
+        
+        # Save competition CSV
+        csv_path = classifier.save_competition_csv(results, args.output_filename)
+        logger.info(f"Competition CSV saved to: {csv_path}")
+        
+        # Generate and save report
+        report = classifier.generate_report(results)
+        logger.info(f"Classification report generated")
+        
+        # Print summary
+        print(f"\nProcessing Summary:")
+        print(f"- Total {processing_unit} processed: {len(results)}")
+        print(f"- Output CSV: {csv_path}")
+        
+        if 'telescope_distribution' in report:
+            print(f"\nTelescope Distribution:")
+            for telescope, count in report['telescope_distribution'].items():
+                percentage = report['telescope_percentages'][telescope]
+                print(f"  {telescope}: {count} {processing_unit} ({percentage:.1f}%)")
+        
+        if 'classification_distribution' in report:
+            print(f"\nClassification Distribution:")
+            for category, count in report['classification_distribution'].items():
+                print(f"  {category}: {count} {processing_unit}")
 
     except ValueError as e:
-        logger.error(f"Initialization Error: {e}")
+        logger.error(f"Configuration error: {e}")
         sys.exit(1)
     except FileNotFoundError as e:
-        logger.error(f"Setup Error: {e}")
+        logger.error(f"File error: {e}")
         sys.exit(1)
     except Exception as e:
-        logger.error(f"An unexpected error occurred during execution: {e}")
+        logger.error(f"Unexpected error: {e}")
         logger.exception("Traceback:")
         sys.exit(1)
 
-    logger.info("Script finished successfully.")
+    logger.info("Multi-telescope classification completed successfully!")
     sys.exit(0)
 
 

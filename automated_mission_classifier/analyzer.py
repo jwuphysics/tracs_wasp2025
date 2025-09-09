@@ -190,9 +190,12 @@ class AutomatedMissionClassifier:
             return papers
 
     def _has_body_text(self, paper: Dict) -> bool:
-        """Check if paper has body text available."""
-        body = paper.get('body', '')
-        return isinstance(body, str) and len(body.strip()) > 0
+        """Check if paper has any text content available."""
+        for field in ['title', 'abstract', 'body', 'acknowledgments', 'grants']:
+            content = paper.get(field, '')
+            if isinstance(content, str) and len(content.strip()) > 0:
+                return True
+        return False
 
     def _is_skipped(self, paper: Dict) -> bool:
         """Check if paper was previously skipped."""
@@ -289,9 +292,9 @@ class AutomatedMissionClassifier:
                     logger.info(f"Paper {bibcode} was previously skipped. Skipping.")
                     continue
 
-                # Check if paper has body text
+                # Check if paper has any text content
                 if not self._has_body_text(paper):
-                    self._mark_as_skipped(paper, "No body text available")
+                    self._mark_as_skipped(paper, "No text content available")
                     continue
 
                 # Analyze for science content
@@ -333,6 +336,9 @@ class AutomatedMissionClassifier:
             
             # Generate CSV report
             self.report_generator.generate_csv_report(batch_identifier, self.cache_files, self.limit_papers)
+            
+            # Generate competition CSV format
+            self.report_generator.generate_competition_csv(batch_identifier, self.cache_files, self.limit_papers)
 
             end_time = time.time()
             logger.info(f"Analysis complete for {self.mission} mission classification in {end_time - start_time:.2f} seconds.")
@@ -347,24 +353,48 @@ class AutomatedMissionClassifier:
             raise
 
     def _analyze_paper(self, paper: Dict) -> Dict:
-        """Analyze a single paper with body text for science content."""
+        """Analyze a single paper using combined text sources for telescope classification."""
         bibcode = paper.get('bibcode', 'unknown')
-        body_text = paper.get('body', '')
         
-        if not body_text:
-            logger.warning(f"No body text available for {bibcode}")
-            return {"science": -1.0, "reason": "Analysis failed: No body text", 
-                   "quotes": [], "error": "missing_body_text"}
+        # Combine all available text sources
+        text_sources = []
+        for field in ['title', 'abstract', 'body', 'acknowledgments', 'grants']:
+            content = paper.get(field, '')
+            if content and isinstance(content, str) and content.strip():
+                text_sources.append(content.strip())
         
-        # Use the science analyzer's logic but with body text directly
+        if not text_sources:
+            logger.warning(f"No text content available for {bibcode}")
+            return {"telescope": "NONE", "science": False, "instrumentation": False, 
+                   "mention": False, "not_telescope": True, "reason": "Analysis failed: No text content", 
+                   "quotes": [], "error": "missing_text"}
+        
+        combined_text = "\n\n".join(text_sources)
+        
+        # Step 1: Identify primary telescope if not specified
+        detected_telescope = paper.get('telescope', 'UNKNOWN')
+        if detected_telescope == 'UNKNOWN' or not detected_telescope:
+            detected_telescope = self._identify_telescope(combined_text)
+        
+        # Step 2: Extract relevant snippets for the detected telescope
+        telescope_keywords = self.science_analyzer.TELESCOPE_KEYWORDS.get(detected_telescope, [])
+        if not telescope_keywords:
+            # If telescope not supported, try generic keywords
+            telescope_keywords = []
+            for tel, keywords in self.science_analyzer.TELESCOPE_KEYWORDS.items():
+                if tel in ['CHANDRA', 'HST', 'JWST']:
+                    telescope_keywords.extend(keywords)
+        
+        keywords_lower = sorted([k.lower() for k in telescope_keywords], key=len, reverse=True)
         all_snippets = self.science_analyzer.text_extractor.extract_relevant_snippets(
-            body_text, self.science_analyzer.science_keywords_lower
+            combined_text, keywords_lower
         )
 
         if not all_snippets:
-            logger.info(f"No relevant keywords found for science analysis in {bibcode}.")
-            return {"science": 0.0, "quotes": [], 
-                   "reason": f"No relevant keywords for {self.mission} found in text."}
+            logger.info(f"No relevant keywords found for telescope analysis in {bibcode}.")
+            return {"telescope": detected_telescope, "science": False, "instrumentation": False,
+                   "mention": False, "not_telescope": True, "quotes": [], 
+                   "reason": f"No relevant keywords for {detected_telescope} found in text."}
 
         # Rerank snippets
         rerank_query = self.science_analyzer.prompts.get('rerank_science_query')
@@ -373,7 +403,7 @@ class AutomatedMissionClassifier:
             return {"science": -1.0, "reason": "Analysis failed: Missing rerank science query prompt", 
                    "quotes": [], "error": "prompt_missing"}
 
-        rerank_query = rerank_query.format(mission=self.mission)
+        rerank_query = rerank_query.format(telescope=detected_telescope)
 
         # Use GPT reranker if available, otherwise fall back to Cohere
         if self.science_analyzer.gpt_reranker:
@@ -435,25 +465,68 @@ class AutomatedMissionClassifier:
                    "quotes": [], "error": "prompt_missing"}
         
         try:
-            user_prompt = user_prompt_template.format(snippets_text=snippets_text, mission=self.mission)
+            user_prompt = user_prompt_template.format(snippets_text=snippets_text, telescope=detected_telescope)
         except KeyError as e:
             logger.error(f"Failed to format science user prompt - missing placeholder {e}")
-            return {"science": -1.0, "reason": "Analysis failed: Prompt formatting error", 
+            return {"telescope": detected_telescope, "science": False, "instrumentation": False,
+                   "mention": False, "not_telescope": True, "reason": "Analysis failed: Prompt formatting error", 
                    "quotes": [], "error": "prompt_format_error"}
         
-        # Call LLM using separated analysis
-        llm_result = self.science_analyzer.openai_client.call_separated_analysis(
-            system_prompt, user_prompt, self.mission
+        # Call LLM using telescope classification
+        llm_result = self.science_analyzer.openai_client.call_telescope_classification(
+            system_prompt, user_prompt, detected_telescope
         )
 
         if llm_result is None or "error" in llm_result:
             error_reason = f"LLM analysis failed: {llm_result.get('message', 'Unknown error') if llm_result else 'Unknown error'}"
             error_type = llm_result.get('error', 'unknown') if llm_result else 'unknown'
-            return {"science": -1.0, "reason": error_reason, "quotes": [], "error": error_type}
+            return {"telescope": detected_telescope, "science": False, "instrumentation": False,
+                   "mention": False, "not_telescope": True, "reason": error_reason, "quotes": [], "error": error_type}
 
-        # Results already have the science field from the LLM model
+        # Ensure telescope is set
+        if "telescope" not in llm_result:
+            llm_result["telescope"] = detected_telescope
         
         return llm_result
+
+    def _identify_telescope(self, combined_text: str) -> str:
+        """Identify which telescope a paper primarily discusses."""
+        if not combined_text:
+            return "NONE"
+            
+        # Use LLM to identify telescope if available
+        telescope_id_system = self.science_analyzer.prompts.get('telescope_identification_system')
+        telescope_id_user = self.science_analyzer.prompts.get('telescope_identification_user')
+        
+        if telescope_id_system and telescope_id_user:
+            try:
+                # Limit text length for telescope identification
+                text_for_id = combined_text[:10000] if len(combined_text) > 10000 else combined_text
+                user_prompt = telescope_id_user.format(snippets_text=text_for_id)
+                
+                result = self.science_analyzer.openai_client.identify_telescope(
+                    telescope_id_system, user_prompt
+                )
+                
+                if result and "telescope" in result:
+                    identified = result["telescope"].upper()
+                    if identified in ["CHANDRA", "HST", "JWST", "NONE"]:
+                        return identified
+                        
+            except Exception as e:
+                logger.warning(f"Telescope identification failed: {e}")
+        
+        # Fallback: simple keyword matching
+        text_lower = combined_text.lower()
+        
+        # Check for specific telescopes in order of specificity
+        for telescope, keywords in self.science_analyzer.TELESCOPE_KEYWORDS.items():
+            if telescope in ["CHANDRA", "HST", "JWST"]:
+                for keyword in keywords:
+                    if keyword.lower() in text_lower:
+                        return telescope
+        
+        return "NONE"
 
     def process_single_paper(self, bibcode: str):
         """Processes a single paper by bibcode and prints results to stdout."""

@@ -75,8 +75,12 @@ class OpenAIClient:
         return None
     
     def call_separated_analysis(self, system_prompt: str, user_prompt: str, mission: str) -> Optional[Dict[str, Any]]:
-        """Completely separated analysis: reasoning first, then scoring based on reasoning."""
-        from ..models import MissionScienceReasoningModel, MissionScienceScoringModel
+        """Legacy method for backward compatibility - calls telescope classification."""
+        return self.call_telescope_classification(system_prompt, user_prompt, mission)
+        
+    def call_telescope_classification(self, system_prompt: str, user_prompt: str, telescope: str) -> Optional[Dict[str, Any]]:
+        """Telescope classification: reasoning first, then scoring based on reasoning.""" 
+        from ..models import TelescopeClassificationReasoningModel, TelescopeClassificationScoringModel
         
         try:
             # Step 1: Get reasoning and quotes only
@@ -86,7 +90,7 @@ class OpenAIClient:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                response_format=MissionScienceReasoningModel,
+                response_format=TelescopeClassificationReasoningModel,
                 timeout=60
             )
             
@@ -97,34 +101,72 @@ class OpenAIClient:
                 
             reasoning_dict = reasoning_data.model_dump()
             
-            # Step 2: Score based on the reasoning
-            scoring_prompt = f"""Based on this analysis of {mission} mission science evidence:
+            # Step 2: Score based on the reasoning  
+            scoring_prompt = f"""Based on this analysis of {telescope} telescope classification evidence:
 
 REASONING: {reasoning_dict['reason']}
 
-What score from 0.0 to 1.0 does this reasoning support for **{mission}** mission science? Your score must be consistent with the reasoning above. Pay close attention to any explicit score mentioned in the reasoning."""
+Based on this reasoning, determine the boolean classifications for this paper:
+- science: Does it use {telescope} data for NEW scientific results?
+- instrumentation: Does it describe {telescope} technical aspects/instruments?  
+- mention: Does it reference {telescope} without new results/contributions?
+- not_telescope: Are the references actually about something else?
+
+Remember: A paper can have multiple True values, but if science or instrumentation is True, mention should be False."""
             
             scoring_result = self.client.beta.chat.completions.parse(
                 model=self.model,
                 messages=[
                     {"role": "user", "content": scoring_prompt}
                 ],
-                response_format=MissionScienceScoringModel,
+                response_format=TelescopeClassificationScoringModel,
                 timeout=60
             )
             
             scoring_data = scoring_result.choices[0].message.parsed
             if not scoring_data:
-                logger.error("Failed to get score from second step")
+                logger.error("Failed to get classification scores from second step")
                 return None
                 
             # Combine results
-            return {
+            result = {
+                "telescope": telescope,
                 "quotes": reasoning_dict["quotes"],
-                "reason": reasoning_dict["reason"], 
-                "science": scoring_data.model_dump()["science"]
+                "reason": reasoning_dict["reason"],
+                **scoring_data.model_dump()
             }
+            
+            # Add legacy science score for backward compatibility
+            result["science_score"] = 1.0 if result["science"] else 0.0
+            
+            return result
                 
         except Exception as e:
-            logger.error(f"Separated analysis failed: {e}")
+            logger.error(f"Telescope classification failed: {e}")
+            return None
+            
+    def identify_telescope(self, system_prompt: str, user_prompt: str) -> Optional[Dict[str, Any]]:
+        """Identify which telescope a paper primarily discusses."""
+        from ..models import TelescopeIdentificationModel
+        
+        try:
+            result = self.client.beta.chat.completions.parse(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                response_format=TelescopeIdentificationModel,
+                timeout=60
+            )
+            
+            parsed_data = result.choices[0].message.parsed
+            if not parsed_data:
+                logger.error("Failed to get telescope identification")
+                return None
+                
+            return parsed_data.model_dump()
+                
+        except Exception as e:
+            logger.error(f"Telescope identification failed: {e}")
             return None
