@@ -1,50 +1,48 @@
-# TRACS Telescope Classification System
+# Solving the TRACS @ WASP 2025 Shared Task
 
-**Automated telescope bibliography curation using Large Language Models**
+This repo gives a solution using LLMs for automated telescope bibliography classification. See [the Kaggle competition](https://www.kaggle.com/competitions/tracs-wasp-2025) for more details.
 
-This system classifies astronomical papers by telescope relevance and usage type for bibliography curation. Originally developed for the WASP2025 shared task using the TRACS (Telescope Bibliography Classification) dataset, it identifies how papers relate to major space telescopes (CHANDRA, HST, JWST) and ground truth classification.
-
-## What This System Does
-
-The system analyzes astronomical papers and determines:
-- **Which telescope** the paper primarily discusses (CHANDRA, HST, JWST, or none)
-- **How the paper uses the telescope** across four categories:
+The system ingests a big CSV file of bibliographic data (including paper full text) and determiens:
+- Which telescope the paper primarily discusses (CHANDRA, HST, JWST, or none)
+- How the paper uses the telescope across four categories:
   - **Science**: Uses telescope data to obtain new scientific results
   - **Instrumentation**: Describes technical aspects, calibration, or instruments
   - **Mention**: References telescope without new results or contributions  
-  - **Not Telescope**: Contains references confused with telescope but about something else
-
-This classification supports librarians and data curators in building accurate telescope bibliographies for impact assessment and data discovery.
+  - **Not Telescope**: Might contain substrings of a telescope keyword but it's about something else
 
 ## Quick Start
 
-The system provides a numbered pipeline for processing CSV data with combined Id fields (bibcode_telescope format):
-
-### Mini Pipeline
+Run the full pipeline for testing outputs, e.g., evaluate on a "training" dataset
 
 ```bash
-# Step 1: Process and explore data
+# Step 1a: Process and explore data
 python scripts/1-process_data.py data/train.csv --create-subset 100
+
+# Step 1b: Make ground truth dataset
+python scripts/1-process_data.py data/train.csv --create-ground-truth
 
 # Step 2: Run telescope classification  
 python scripts/2-classify_papers.py data/train_subset.csv
 
-# Step 3: Evaluate results (if ground truth available)
-python scripts/3-evaluate_results.py results/submission.csv ground_truth.json
+# Step 3: Evaluate results (if ground truth available; *you should skip for the test sets)
+python scripts/3-evaluate_results.py output/results/submission.csv data/ground_truth.json
 
-# Step 4: Generate detailed analysis
-python scripts/4-analyze_results.py results/submission.csv --detailed
+# Step 4: Summarize results (some of this is Claude slop, sorry)
+python scripts/4-analyze_results.py output/results/submission.csv --detailed
 ```
 
-### Full Kaggle run
+**If you want to run on the full Kaggle dataset, just simply run:**
 
-For full dataset processing:
 
 ```bash
 python scripts/1-process_data.py data/test.csv
 python scripts/2-classify_papers.py data/test.csv --output-dir results/production
 python scripts/4-analyze_results.py results/production/results/submission.csv
 ```
+
+This takes < 24 hrs to process ~9000 papers (see details about the dataset on [Kaggle](https://www.kaggle.com/competitions/tracs-wasp-2025/data) and [Huggingface](https://ui.adsabs.harvard.edu/WIESP/2025/shared_task#dataset-description)). With `gpt-5-mini` and the custom reranker (both enabled by default), this costs about $12. 
+
+## Details about the codebase
 
 ### Data Format
 
@@ -54,7 +52,7 @@ The inputs are expected to be CSV files with:
 
 The output Competition CSV with boolean classification columns
 
-### Configuration Options
+### LLM system Options
 
 Common parameters across all scripts:
 - `--gpt-model`: GPT model for classification (default: gpt-5-mini)
@@ -84,9 +82,9 @@ The system classifies astronomical papers by telescope relevance using a multi-s
 3. **Content Reranking**: Extracts and ranks most relevant text passages
 4. **Classification**: Applies LLM prompts to classify telescope usage type
 
-## Input and Output Formats
+### Data
 
-### Input CSV Format
+#### Input CSV Format
 The system expects CSV files with combined Id fields:
 
 ```csv
@@ -94,7 +92,7 @@ Id,bibcode,author,year,title,abstract,body,acknowledgments,grants
 2012A&A...537A..18M_CHANDRA,2012A&A...537A..18M,"Author, A.",2012,Paper Title,Abstract text,Body text,Ack text,Grant info
 ```
 
-### Competition Output Format
+#### Kaggle submission format
 Boolean classifications for submission:
 
 ```csv
@@ -104,42 +102,47 @@ Id,telescope,science,instrumentation,mention,not_telescope
 2022ApJ...935..177S_HST,HST,True,False,False,False
 ```
 
-### Detailed Analysis Output
-The system also generates comprehensive JSON reports with:
-- Classification reasoning and supporting quotes
-- Processing statistics and error handling
-- Telescope detection confidence scores
+### More detailed analyses
+The system also generates some JSON reports, which let you *look at your data* (thanks Hamel). E.g. you can check out
+- the LLM provided reasoning and supporting quotes (beware hallucinations)
+- processing statistics and error rates
+- telescope detection confidence scores
 
-## Direct Classifier Configuration
+### Run the `amc` (automated mission classifier) directly
 
-For running the automated_mission_classifier directly:
+This repo is adapted from the [`automated-mission-classifier`](https://github.com/jwuphysics/automated-mission-classifier) package, or `amc` for short. You can also run the `amc` directly like so
 
 ```bash
 python -m automated_mission_classifier \
-    --csv-file data/test.csv \             # CSV input file
-    --output-dir results \                 # Output directory
-    --limit-rows 100 \                     # Limit processing (optional)
-    --gpt-model gpt-5-mini \              # Classification model
-    --reranker-model gpt-4.1-nano \       # Reranking model
-    --top-k-snippets 5 \                  # Max snippets to LLM
-    --reranker-threshold 0.001 \          # Min reranker confidence
-    --verbose                              # Detailed logging
+    --csv-file data/test.csv \             
+    --output-dir results \                
+    --limit-rows 100 \                   
+    --gpt-model gpt-5-mini \            
+    --reranker-model gpt-4.1-nano \    
+    --top-k-snippets 5 \              
+    --reranker-threshold 0.001 \     
+    --verbose                       
 ```
 
-Alternative JSON input mode:
+And if your inputs are JSON rather than a CSV, then try:
 ```bash
 python -m automated_mission_classifier \
-    --data-file papers.json \             # JSON input file
+    --data-file papers.json \            
     --output-dir results
 ```
 
-## Supported Telescopes
+## Telescopes/missions currently processed
 
 - **CHANDRA**: X-ray Observatory (including ACIS, HRC, HETG, LETG instruments)
 - **HST**: Hubble Space Telescope (including WFC3, ACS, STIS, COS, NICMOS, WFPC2)
 - **JWST**: James Webb Space Telescope (including NIRCam, NIRSpec, MIRI, NIRISS, FGS)
 - **NONE**: Papers not primarily about any specific telescope
 
+
+I'm actually not sure what to do about the `*_NONE` paper IDs, so for now I'm just automatically labelling them all categories as "False" (following the Huggingface training dataset).
+
+By the way, it's very easy to add additional telescopes or keywords to `automated_mission_classifier/detection/telescope_detector.py` (add entries to the `TELESCOPE_KEYWORDS` dict).
+
 ## Citation and Acknowledgments
 
-This work was developed for the WASP2025 shared task on telescope bibliography classification. The TRACS dataset is available on Hugging Face at `adsabs/TRACS`. Credit to Felix Grezes. TRACS @ WASP 2025. https://kaggle.com/competitions/tracs-wasp-2025, 2025. Kaggle.
+This work was developed by John Wu, the Applied AI Scientist in the STScI Data Science Mission Office, for the WASP2025 shared task on telescope bibliography classification. The TRACS dataset is available on Hugging Face at `adsabs/TRACS`. Credit to Felix Grezes. TRACS @ WASP 2025. https://kaggle.com/competitions/tracs-wasp-2025, 2025. Kaggle.
