@@ -209,6 +209,30 @@ class CSVTelescopeClassifier:
     def _process_single_row(self, row: CSVInputRow) -> Optional[SingleTelescopeResult]:
         """Process a single CSV row through the classification pipeline."""
         
+        # Handle _NONE IDs without LLM processing
+        if row.telescope == "NONE":
+            logger.info(f"Skipping LLM processing for _NONE entry: {row.id}")
+            from .models import TelescopeClassificationModel
+            
+            classification = TelescopeClassificationModel(
+                telescope="NONE",
+                science=False,
+                instrumentation=False,
+                mention=False,
+                not_telescope=False,
+                quotes=[],
+                reasoning="Automatically classified as NONE - no telescope relationship"
+            )
+            
+            result = SingleTelescopeResult(
+                id=row.id,
+                bibcode=row.bibcode,
+                telescope=row.telescope,
+                classification=classification
+            )
+            
+            return result
+        
         # Combine all text sources
         text_sources = []
         for field in ['title', 'abstract', 'body', 'acknowledgments', 'grants']:
@@ -243,6 +267,17 @@ class CSVTelescopeClassifier:
     
     def _create_competition_output(self, result: SingleTelescopeResult) -> CompetitionOutput:
         """Convert SingleTelescopeResult to CompetitionOutput format."""
+        # Handle _NONE telescope entries with all False labels
+        if result.telescope == "NONE":
+            return CompetitionOutput(
+                Id=result.id,  # Keep the combined ID format
+                telescope=result.telescope,
+                science=False,
+                instrumentation=False,
+                mention=False,
+                not_telescope=False
+            )
+        
         classification = result.classification
         
         # Extract values handling both dict and model formats
