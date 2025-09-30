@@ -401,66 +401,83 @@ class AutomatedMissionClassifier:
         if not all_snippets:
             logger.info(f"No relevant keywords found for telescope analysis in {bibcode}.")
             return {"telescope": detected_telescope, "science": False, "instrumentation": False,
-                   "mention": False, "not_telescope": True, "quotes": [], 
+                   "mention": False, "not_telescope": True, "quotes": [],
                    "reason": f"No relevant keywords for {detected_telescope} found in text."}
 
-        # Rerank snippets
-        rerank_query = self.science_analyzer.prompts.get('rerank_science_query')
-        if not rerank_query:
-            logger.error("Rerank science query prompt not found or empty.")
-            return {"science": -1.0, "reason": "Analysis failed: Missing rerank science query prompt", 
-                   "quotes": [], "error": "prompt_missing"}
+        # Skip reranking for short texts (e.g., abstract-only conference papers)
+        # If combined text is short and we have few snippets, just use them all
+        skip_reranking = len(combined_text) < 3000 and len(all_snippets) <= self.science_analyzer.top_k_snippets
 
-        rerank_query = rerank_query.format(telescope=detected_telescope)
-
-        # Use GPT reranker if available, otherwise fall back to Cohere
-        if self.science_analyzer.gpt_reranker:
-            reranked_data = self.science_analyzer.gpt_reranker.rerank_snippets(
-                rerank_query, all_snippets, self.science_analyzer.top_k_snippets
-            )
+        if skip_reranking:
+            logger.info(f"Skipping reranking for {bibcode}: short text ({len(combined_text)} chars) with {len(all_snippets)} snippets")
+            filtered_snippets = [{"snippet": s, "score": None} for s in all_snippets]
         else:
-            reranked_data = self.science_analyzer.cohere_client.rerank_snippets(
-                rerank_query, all_snippets, self.science_analyzer.top_k_snippets
-            )
+            # Rerank snippets
+            rerank_query = self.science_analyzer.prompts.get('rerank_science_query')
+            if not rerank_query:
+                logger.error("Rerank science query prompt not found or empty.")
+                return {"science": -1.0, "reason": "Analysis failed: Missing rerank science query prompt",
+                       "quotes": [], "error": "prompt_missing"}
 
-        if not reranked_data:
-            logger.warning(f"Reranking produced no snippets for {bibcode}. Skipping LLM analysis.")
-            return {"science": 0.0, "quotes": [], 
-                   "reason": "Keyword snippets found but none survived reranking/filtering."}
-                   
-        # Check reranker threshold for top score
-        top_score = reranked_data[0].get('score')
-        if top_score is not None and top_score < self.science_analyzer.reranker_threshold:
-            logger.info(f"Skipping LLM science analysis for {bibcode}: Top reranker score ({top_score:g}) below threshold ({self.science_analyzer.reranker_threshold}).")
-            return {
-                "science": 0.0, 
-                "quotes": [],
-                "reason": f"Skipped LLM analysis: Top reranker score ({top_score:g}) was below the threshold ({self.science_analyzer.reranker_threshold}).",
-            }
+            rerank_query = rerank_query.format(telescope=detected_telescope)
 
-        # Filter snippets above threshold and respect top_k limit
-        filtered_snippets = []
-        for item in reranked_data:
+            # Use GPT reranker if available, otherwise fall back to Cohere
+            if self.science_analyzer.gpt_reranker:
+                reranked_data = self.science_analyzer.gpt_reranker.rerank_snippets(
+                    rerank_query, all_snippets, self.science_analyzer.top_k_snippets
+                )
+            else:
+                reranked_data = self.science_analyzer.cohere_client.rerank_snippets(
+                    rerank_query, all_snippets, self.science_analyzer.top_k_snippets
+                )
+
+            if not reranked_data:
+                logger.warning(f"Reranking produced no snippets for {bibcode}. Skipping LLM analysis.")
+                return {"science": 0.0, "quotes": [],
+                       "reason": "Keyword snippets found but none survived reranking/filtering."}
+
+            # Check reranker threshold for top score
+            top_score = reranked_data[0].get('score')
+            if top_score is not None and top_score < self.science_analyzer.reranker_threshold:
+                logger.info(f"Skipping LLM science analysis for {bibcode}: Top reranker score ({top_score:g}) below threshold ({self.science_analyzer.reranker_threshold}).")
+                return {
+                    "science": 0.0,
+                    "quotes": [],
+                    "reason": f"Skipped LLM analysis: Top reranker score ({top_score:g}) was below the threshold ({self.science_analyzer.reranker_threshold}).",
+                }
+
+            # Filter snippets above threshold and respect top_k limit
+            filtered_snippets = []
+            for item in reranked_data:
+                score = item.get('score')
+                if score is not None and score >= self.science_analyzer.reranker_threshold:
+                    filtered_snippets.append(item)
+                if len(filtered_snippets) >= self.science_analyzer.top_k_snippets:
+                    break
+
+            if not filtered_snippets:
+                logger.info(f"No snippets above threshold ({self.science_analyzer.reranker_threshold}) for {bibcode}.")
+                return {
+                    "science": 0.0,
+                    "quotes": [],
+                    "reason": f"No snippets scored above the threshold ({self.science_analyzer.reranker_threshold}).",
+                }
+
+            logger.info(f"Using {len(filtered_snippets)} snippets above threshold for {bibcode} (filtered from {len(reranked_data)})")
+
+        # Prepare LLM input with scores
+        formatted_snippets = []
+        for i, item in enumerate(filtered_snippets):
             score = item.get('score')
-            if score is not None and score >= self.science_analyzer.reranker_threshold:
-                filtered_snippets.append(item)
-            if len(filtered_snippets) >= self.science_analyzer.top_k_snippets:
-                break
-        
-        if not filtered_snippets:
-            logger.info(f"No snippets above threshold ({self.science_analyzer.reranker_threshold}) for {bibcode}.")
-            return {
-                "science": 0.0,
-                "quotes": [],
-                "reason": f"No snippets scored above the threshold ({self.science_analyzer.reranker_threshold}).",
-            }
+            snippet = item.get('snippet', '')
 
-        logger.info(f"Using {len(filtered_snippets)} snippets above threshold for {bibcode} (filtered from {len(reranked_data)})")
+            if score is not None:
+                formatted_snippets.append(f"Excerpt {i+1} (relevance: {score:.3f}):\n{snippet}")
+            else:
+                formatted_snippets.append(f"Excerpt {i+1}:\n{snippet}")
 
-        # Prepare LLM input
-        reranked_snippets_for_llm = [item['snippet'] for item in filtered_snippets]
-        snippets_text = "\n---\n".join([f"Excerpt {i+1}:\n{s}" for i, s in enumerate(reranked_snippets_for_llm)])
-        max_chars = 50000 
+        snippets_text = "\n---\n".join(formatted_snippets)
+        max_chars = 50000
         if len(snippets_text) > max_chars:
             logger.warning(f"Total snippet text for {bibcode} exceeds {max_chars} chars, truncating.")
             snippets_text = snippets_text[:max_chars]

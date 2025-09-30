@@ -84,16 +84,17 @@ def analyze_csv_data(csv_file: Path) -> Dict:
 def create_test_subset(csv_file: Path, n_papers: int = 100, output_file: Path = None):
     """
     Create a balanced test subset from the CSV file.
-    
+
     Args:
         csv_file: Input CSV file
         n_papers: Number of papers to include in subset
-        output_file: Output file (defaults to test_subset.csv)
+        output_file: Output file (defaults to {input_stem}_subset.csv)
     """
     if output_file is None:
-        output_file = csv_file.parent / "test_subset.csv"
-    
-    print(f"Creating test subset with {n_papers} papers...")
+        # Use input filename stem to determine output name (e.g., train.csv -> train_subset.csv)
+        output_file = csv_file.parent / f"{csv_file.stem}_subset.csv"
+
+    print(f"Creating subset with {n_papers} papers...")
     
     df = pd.read_csv(csv_file)
     
@@ -125,8 +126,8 @@ def create_test_subset(csv_file: Path, n_papers: int = 100, output_file: Path = 
     
     # Save subset
     subset_df.to_csv(output_file, index=False)
-    
-    print(f"Created test subset with {len(subset_df)} papers saved to {output_file}")
+
+    print(f"Created subset with {len(subset_df)} papers saved to {output_file}")
     
     # Print telescope distribution in subset
     subset_telescopes = subset_df['Id'].str.split('_', expand=True)[1].value_counts()

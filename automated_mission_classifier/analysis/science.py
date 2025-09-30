@@ -188,10 +188,19 @@ class ScienceAnalyzer:
 
         logger.info(f"Using {len(filtered_snippets)} snippets above threshold for {paper_id} (filtered from {len(reranked_data)})")
 
-        # Prepare LLM input
-        reranked_snippets_for_llm = [item['snippet'] for item in filtered_snippets]
-        snippets_text = "\n---\n".join([f"Excerpt {i+1}:\n{s}" for i, s in enumerate(reranked_snippets_for_llm)])
-        max_chars = 50000 
+        # Prepare LLM input with scores
+        formatted_snippets = []
+        for i, item in enumerate(filtered_snippets):
+            score = item.get('score')
+            snippet = item.get('snippet', '')
+
+            if score is not None:
+                formatted_snippets.append(f"Excerpt {i+1} (relevance: {score:.3f}):\n{snippet}")
+            else:
+                formatted_snippets.append(f"Excerpt {i+1}:\n{snippet}")
+
+        snippets_text = "\n---\n".join(formatted_snippets)
+        max_chars = 50000
         if len(snippets_text) > max_chars:
             logger.warning(f"Total snippet text for {paper_id} exceeds {max_chars} chars, truncating.")
             snippets_text = snippets_text[:max_chars]

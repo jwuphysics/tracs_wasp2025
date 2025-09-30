@@ -5,10 +5,11 @@ Classify this paper into the appropriate categories. The 'quotes' MUST be exact 
 
 **Classification Guidelines:**
 
-**science** (True/False): 
-- True if excerpts show the paper uses {telescope} observational data to obtain NEW scientific results
-- Look for phrases like "our {telescope} observations", "we analyzed {telescope} data", "new {telescope} results"
-- False if only citing previous {telescope} work or discussing future possibilities
+**science** (True/False):
+- True if excerpts show the paper uses {telescope} observational data (new or published) to obtain NEW scientific results or analysis
+- Look for phrases like "our {telescope} observations", "we analyzed {telescope} data", "we compare our model to {telescope} observations", "consistent with {telescope} measurements"
+- True even if using published {telescope} data for new modeling, comparison, or analysis (not just citing)
+- False if only citing previous {telescope} work without analysis, or discussing future possibilities only
 
 **instrumentation** (True/False):
 - True if excerpts describe technical aspects, calibration, data processing pipeline, or instrumentation of {telescope}
@@ -30,6 +31,7 @@ Classify this paper into the appropriate categories. The 'quotes' MUST be exact 
 - A paper can have multiple categories True (e.g., both science and instrumentation)
 - If science or instrumentation is True, then mention should be False
 - Focus ONLY on the provided excerpts
+- Each excerpt shows a relevance score (0.0-1.0) indicating how strongly it relates to {telescope}. Higher scores indicate stronger telescope relevance. Use these scores as additional evidence when making classifications.
 
 **Excerpts:**
 {snippets_text}

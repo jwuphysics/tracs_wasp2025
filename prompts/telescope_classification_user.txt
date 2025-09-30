@@ -3,16 +3,13 @@ Analyze these excerpts from a scientific paper to classify its relationship to {
 PAPER EXCERPTS:
 {snippets_text}
 
+Note: Each excerpt shows a relevance score (0.0-1.0) indicating how strongly it relates to {telescope}. Higher scores indicate stronger telescope relevance. Use these scores as additional evidence when making classifications.
+
 Based ONLY on the excerpts above, classify this paper's relationship to {telescope} using these categories:
 
 - **science**: Does the paper use {telescope} data to obtain NEW scientific results?
-- **instrumentation**: Does the paper describe technical aspects of {telescope}?
+- **instrumentation**: Does the paper describe novel {telescope} instrument characterization or calibration?
 - **mention**: Does the paper reference {telescope} without new results or technical contributions?
 - **not_telescope**: Are the {telescope} references actually about something else?
 
 Provide supporting quotes (exact substrings from the excerpts) and detailed reasoning for your classification. Remember that a paper can be classified as multiple categories (e.g., both science AND instrumentation), but if science or instrumentation is true, mention and not_telescope must be false.
-
-Focus on the specific telescope context:
-- CHANDRA: X-ray observations and analysis
-- HST: Optical/UV observations and analysis  
-- JWST: Infrared observations and analysis

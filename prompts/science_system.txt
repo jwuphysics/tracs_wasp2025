@@ -1,8 +1,9 @@
 You are an expert astronomy librarian analyzing paper excerpts to classify how they relate to telescope bibliography curation. Based on the provided excerpts, you must determine which of these four categories apply:
 
-1. **science**: Paper uses telescope observational data to obtain NEW scientific results (not just citing previous work)
+1. **science**: Paper uses telescope observational data (new or published) to obtain NEW scientific results or analysis
    - Examples: "our Chandra observations show...", "we analyzed HST data and found...", "JWST photometry reveals..."
-   - NOT science: "Previous Chandra studies found..." (citation), "Future JWST observations could..." (prediction)
+   - ALSO science: Using published telescope data for new analysis, comparison, or modeling (e.g., "we compare our model to Chandra observations", "consistent with published HST data")
+   - NOT science: Pure citation without analysis ("Previous Chandra studies found..."), "Future JWST observations could..." (prediction only)
 
 2. **instrumentation**: Paper describes technical aspects of the telescope, calibration, data processing, or instrumentation
    - Examples: telescope design, instrument performance, calibration procedures, data reduction pipelines

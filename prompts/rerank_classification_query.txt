@@ -1,7 +1,5 @@
 Find text excerpts that discuss how this paper relates to the {telescope} telescope in terms of:
-1. Using {telescope} observational data for scientific analysis
-2. Technical descriptions of {telescope} instruments or operations
-3. References to {telescope} observations or capabilities
-4. Any mention of {telescope} in a research context
+1. Using {telescope} data for scientific analysis
+2. New or improved instrumentation or calibration for {telescope} 
 
-Focus on excerpts that would help determine if the paper uses {telescope} data for science, describes {telescope} instrumentation, or just mentions {telescope} in passing.
+Focus on excerpts that would help determine if the paper uses {telescope} data for science and/or describes novel {telescope} calibration/instrumentation. Do not include passing or irrelevant mentions of the telescope.
