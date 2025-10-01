@@ -38,7 +38,7 @@ class AutomatedMissionClassifier:
                  batch_mode: Optional[str] = None,
                  prompts_dir: Path = Path("./prompts"),
                  science_threshold: float = 0.5,
-                 reranker_threshold: float = 0.001,
+                 reranker_threshold: float = 0.0,
                  openai_key: Optional[str] = None,
                  cohere_key: Optional[str] = None,
                  gpt_model: str = 'gpt-5-mini',
@@ -191,7 +191,7 @@ class AutomatedMissionClassifier:
 
     def _has_body_text(self, paper: Dict) -> bool:
         """Check if paper has any text content available."""
-        for field in ['title', 'abstract', 'body', 'acknowledgments', 'grants']:
+        for field in ['title', 'abstract', 'body']:
             content = paper.get(field, '')
             if isinstance(content, str) and len(content.strip()) > 0:
                 return True
@@ -358,7 +358,7 @@ class AutomatedMissionClassifier:
         
         # Combine all available text sources
         text_sources = []
-        for field in ['title', 'abstract', 'body', 'acknowledgments', 'grants']:
+        for field in ['title', 'abstract', 'body']:
             content = paper.get(field, '')
             if content and isinstance(content, str) and content.strip():
                 text_sources.append(content.strip())

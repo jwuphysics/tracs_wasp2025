@@ -90,7 +90,7 @@ def main():
     parser.add_argument(
         "--reranker-threshold",
         type=float,
-        default=0.001,
+        default=0.0,
         help="Minimum reranker score for snippets to proceed with LLM analysis"
     )
     

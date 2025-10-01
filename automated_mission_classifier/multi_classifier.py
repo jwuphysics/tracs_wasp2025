@@ -172,7 +172,7 @@ class MultiTelescopeClassifier:
         
         # Combine all text sources
         text_sources = []
-        for field in ['title', 'abstract', 'body', 'acknowledgments', 'grants']:
+        for field in ['title', 'abstract', 'body']:
             content = paper.get(field, '')
             if content and isinstance(content, str) and content.strip():
                 text_sources.append(content.strip())

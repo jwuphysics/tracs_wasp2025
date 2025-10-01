@@ -48,7 +48,7 @@ class CSVTelescopeClassifier:
                  reranker_model: str = 'gpt-4.1-nano',
                  top_k_snippets: int = 5,
                  context_sentences: int = 3,
-                 reranker_threshold: float = 0.001,
+                 reranker_threshold: float = 0.0,
                  limit_rows: Optional[int] = None):
         """
         Initialize the CSV telescope classifier.
@@ -206,36 +206,145 @@ class CSVTelescopeClassifier:
         
         return competition_results
     
+    def _detect_telescope_from_keywords(self, text: str) -> Optional[str]:
+        """
+        Detect telescope from restrictive keyword matching.
+        Uses only full telescope names to avoid false positives.
+
+        Returns:
+            Telescope name (CHANDRA, HST, JWST) or None
+        """
+        if not text:
+            return None
+
+        text_lower = text.lower()
+
+        # Restrictive keywords: only full telescope names
+        telescope_keywords = {
+            "CHANDRA": ["chandra", "cxo"],
+            "HST": ["hubble", "hst"],
+            "JWST": ["webb", "jwst"]
+        }
+
+        # Count matches for each telescope
+        telescope_counts = {}
+        for telescope, keywords in telescope_keywords.items():
+            count = sum(text_lower.count(keyword) for keyword in keywords)
+            if count > 0:
+                telescope_counts[telescope] = count
+
+        if not telescope_counts:
+            return None
+
+        # Return telescope with most matches
+        detected = max(telescope_counts.items(), key=lambda x: x[1])
+        logger.info(f"Keyword detection found {detected[0]} with {detected[1]} matches")
+        return detected[0]
+
     def _process_single_row(self, row: CSVInputRow) -> Optional[SingleTelescopeResult]:
         """Process a single CSV row through the classification pipeline."""
-        
-        # Handle _NONE IDs without LLM processing
+
+        # Handle _NONE IDs with keyword-based telescope detection
         if row.telescope == "NONE":
-            logger.info(f"Skipping LLM processing for _NONE entry: {row.id}")
-            from .models import TelescopeClassificationModel
-            
-            classification = TelescopeClassificationModel(
-                telescope="NONE",
-                science=False,
-                instrumentation=False,
-                mention=False,
-                not_telescope=False,
-                quotes=[],
-                reasoning="Automatically classified as NONE - no telescope relationship"
-            )
-            
-            result = SingleTelescopeResult(
-                id=row.id,
-                bibcode=row.bibcode,
-                telescope=row.telescope,
-                classification=classification
-            )
-            
-            return result
+            # Combine text sources for keyword detection
+            text_sources = []
+            for field in ['title', 'abstract', 'body']:
+                content = getattr(row, field, '')
+                if content and isinstance(content, str) and content.strip():
+                    text_sources.append(content.strip())
+
+            if not text_sources:
+                logger.info(f"No text content for _NONE entry: {row.id}")
+                from .models import TelescopeClassificationModel
+
+                classification = TelescopeClassificationModel(
+                    telescope="NONE",
+                    science=False,
+                    instrumentation=False,
+                    mention=False,
+                    not_telescope=False,
+                    quotes=[],
+                    reasoning="No text content available for _NONE entry"
+                )
+
+                result = SingleTelescopeResult(
+                    id=row.id,
+                    bibcode=row.bibcode,
+                    telescope=row.telescope,
+                    classification=classification
+                )
+
+                return result
+
+            combined_text = "\n\n".join(text_sources)
+
+            # Try to detect telescope from keywords
+            detected_telescope = self._detect_telescope_from_keywords(combined_text)
+
+            if detected_telescope:
+                # Process with detected telescope through standard pipeline
+                logger.info(f"Processing _NONE entry {row.id} as {detected_telescope} based on keyword detection")
+                classification = self.telescope_analyzer.analyze_telescope_relationship(
+                    combined_text, detected_telescope, row.bibcode
+                )
+
+                if not classification:
+                    logger.warning(f"Failed to classify _NONE entry {row.id} for detected telescope {detected_telescope}")
+                    from .models import TelescopeClassificationModel
+
+                    classification = TelescopeClassificationModel(
+                        telescope="NONE",
+                        science=False,
+                        instrumentation=False,
+                        mention=False,
+                        not_telescope=False,
+                        quotes=[],
+                        reasoning=f"Keyword detection found {detected_telescope} but classification failed"
+                    )
+                    # Use NONE if classification failed
+                    result = SingleTelescopeResult(
+                        id=row.id,
+                        bibcode=row.bibcode,
+                        telescope="NONE",
+                        classification=classification
+                    )
+                else:
+                    # Use detected telescope for successful classification
+                    result = SingleTelescopeResult(
+                        id=row.id,
+                        bibcode=row.bibcode,
+                        telescope=detected_telescope,  # Use detected telescope
+                        classification=classification
+                    )
+
+                return result
+            else:
+                # No telescope keywords found - keep as NONE with all False
+                logger.info(f"No telescope keywords found in _NONE entry: {row.id}")
+                from .models import TelescopeClassificationModel
+
+                classification = TelescopeClassificationModel(
+                    telescope="NONE",
+                    science=False,
+                    instrumentation=False,
+                    mention=False,
+                    not_telescope=False,
+                    quotes=[],
+                    reasoning="No telescope keywords found in _NONE entry"
+                )
+
+                result = SingleTelescopeResult(
+                    id=row.id,
+                    bibcode=row.bibcode,
+                    telescope=row.telescope,
+                    classification=classification
+                )
+
+                return result
         
         # Combine all text sources
         text_sources = []
-        for field in ['title', 'abstract', 'body', 'acknowledgments', 'grants']:
+        for field in ['title', 'abstract', 'body']:
             content = getattr(row, field, '')
             if content and isinstance(content, str) and content.strip():
                 text_sources.append(content.strip())
@@ -267,17 +376,6 @@ class CSVTelescopeClassifier:
     
     def _create_competition_output(self, result: SingleTelescopeResult) -> CompetitionOutput:
         """Convert SingleTelescopeResult to CompetitionOutput format."""
-        # Handle _NONE telescope entries with all False labels
-        if result.telescope == "NONE":
-            return CompetitionOutput(
-                Id=result.id,  # Keep the combined ID format
-                telescope=result.telescope,
-                science=False,
-                instrumentation=False,
-                mention=False,
-                not_telescope=False
-            )
-        
         classification = result.classification
         
         # Extract values handling both dict and model formats

@@ -80,10 +80,9 @@ export OPENAI_API_KEY=your_openai_key_here
 
 The system classifies astronomical papers by telescope relevance using a multi-stage LLM pipeline:
 
-1. **Text Processing**: Combines title, abstract, body, acknowledgments, and grants
-2. **Telescope Detection**: Identifies relevant telescopes using keywords and LLM analysis  
-3. **Content Reranking**: Extracts and ranks most relevant text passages
-4. **Classification**: Applies LLM prompts to classify telescope usage type
+- **Text Processing**: Combines title, abstract, body, acknowledgments, and grants
+- **Content Reranking**: Extracts and ranks most relevant text passages
+- **Classification**: Applies LLM prompts to classify telescope usage type
 
 ### Data
 

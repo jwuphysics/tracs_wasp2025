@@ -81,7 +81,7 @@ class ScienceAnalyzer:
                  prompts: Dict[str, str],
                  mission: str = "JWST",
                  top_k_snippets: int = 15,
-                 reranker_threshold: float = 0.001,
+                 reranker_threshold: float = 0.0,
                  gpt_reranker: Optional[GPTReranker] = None):
         self.openai_client = openai_client
         self.cohere_client = cohere_client
