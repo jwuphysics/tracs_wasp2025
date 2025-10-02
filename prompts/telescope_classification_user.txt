@@ -1,15 +1,44 @@
-Analyze these excerpts from a scientific paper to classify its relationship to {telescope}:
+Analyze the following excerpts from an astronomy paper to classify how it relates to the **{telescope}** telescope for bibliography curation purposes.
 
-PAPER EXCERPTS:
+**Task:**
+Classify this paper into the appropriate categories. The 'quotes' MUST be exact substrings copied from the provided excerpts below.
+
+**Classification Guidelines:**
+
+1. **science**: Paper uses telescope observational data (new or published) to obtain NEW scientific results or analysis IN THIS PAPER
+   - Examples: "our observations show...", "we analyzed the data and found...", "our recalibrated photometry reveals...", "we reprocessed archival data and discovered..."
+   - ALSO science: Using telescope data for new analysis, comparison, or theoretical modeling (e.g., "we compare our model to observations")
+   - NOT science: Future/planned observations ("will observe...", "is expected to detect...", "could measure..."), simulated/mock data ("simulated spectra", "mock observations"), citing others' results ("Author et al. observed with telescope...", "consistent with published telescope data"), literature comparisons for validation only ("agrees with telescope results from Paper X")
+
+2. **instrumentation**: Paper describes new instrument science or engineering
+   - Examples: telescope design, instrument performance, calibration procedures, data reduction pipelines
+   - Can be combined with science if paper presents both technical work AND new scientific results
+
+3. **mention**: Paper references the telescope but does not produce new scientific results or contribute to understanding it
+   - ALWAYS classify as mention if: discussing future/planned observations ("will observe...", "expected to detect...", "could measure..."), using simulated/synthetic data ("simulated telescope spectra", "mock observations", "forecasts"), citing others' results ("Author et al. observed with telescope...", "published telescope data show..."), literature comparisons/validation ("consistent with telescope measurements", "agrees with telescope results (Citation)"), target feasibility ("X is a promising target for telescope", "suitable for telescope follow-up"), compilation from literature
+   - ONLY use if the paper does NOT qualify for science or instrumentation
+
+4. **not_telescope**: Paper includes references that are false positives - names that LOOK like the telescope but refer to something completely different
+   - Examples: references to people, astronomical objects, grants or fellowships
+   - Use RARELY and ONLY when you're certain the reference is about something else entirely
+   - If a paper actually discusses the telescope (even briefly), it should be mention, NOT not_telescope
+
+Also note: 
+- A paper can have multiple categories True (e.g., both science and instrumentation)
+- If science or instrumentation is True, then mention should be False
+- Focus ONLY on the provided excerpts
+- Each excerpt shows a relevance score (0.0-1.0) indicating how strongly it relates to {telescope}. Higher scores indicate stronger telescope relevance. Use these scores as additional evidence when making classifications.
+
+**Excerpts:**
 {snippets_text}
 
-Note: Each excerpt shows a relevance score (0.0-1.0) indicating how strongly it relates to {telescope}. Higher scores indicate stronger telescope relevance. Use these scores as additional evidence when making classifications.
-
-Based ONLY on the excerpts above, classify this paper's relationship to {telescope} using these categories:
-
-- **science**: Does the paper use {telescope} data to obtain NEW scientific results?
-- **instrumentation**: Does the paper describe novel {telescope} instrument characterization or calibration?
-- **mention**: Does the paper reference {telescope} without new results or technical contributions?
-- **not_telescope**: Are the {telescope} references actually about something else?
-
-Provide supporting quotes (exact substrings from the excerpts) and detailed reasoning for your classification. Remember that a paper can be classified as multiple categories (e.g., both science AND instrumentation), but if science or instrumentation is true, mention and not_telescope must be false.
+**JSON Output Format:**
+{{
+    "telescope": "{telescope}",
+    "science": <true/false>,
+    "instrumentation": <true/false>, 
+    "mention": <true/false>,
+    "not_telescope": <true/false>,
+    "quotes": ["Exact quote 1 from excerpts...", "Exact quote 2..."],
+    "reason": "Justification for each classification based ONLY on the excerpts."
+}}

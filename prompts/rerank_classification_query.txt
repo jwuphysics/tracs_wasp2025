@@ -1,5 +1,5 @@
-Find text excerpts that discuss how this paper relates to the {telescope} telescope in terms of:
+Does this paper relate to the {telescope} telescope in terms of:
 1. Using {telescope} data for scientific analysis
-2. New or improved instrumentation or calibration for {telescope} 
+2. New or improved instrument science or engineering work for {telescope} 
 
-Focus on excerpts that would help determine if the paper uses {telescope} data for science and/or describes novel {telescope} calibration/instrumentation. Do not include passing or irrelevant mentions of the telescope.
+Respond with "Yes" if the paper uses {telescope} data for science and/or describes {telescope} instrumentat science/engineering. Passing mentions of the telescope should be "No", and irrelevant results should absolutely be "No".

@@ -1,6 +1,0 @@
-Analyze the following excerpts from an astronomy paper and identify the PRIMARY telescope discussed:
-
-**Excerpts:**
-{snippets_text}
-
-Return your analysis identifying which telescope (CHANDRA, HST, JWST, or NONE) is the primary focus of these excerpts.

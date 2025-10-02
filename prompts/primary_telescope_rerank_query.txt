@@ -1,7 +1,0 @@
-Find text excerpts that indicate this paper's PRIMARY focus on the {telescope} telescope. Look for content showing:
-1. Main observational data from {telescope}
-2. Primary scientific analysis using {telescope} data
-3. Technical focus on {telescope} instruments or operations
-4. Core research questions addressed with {telescope}
-
-Focus on excerpts that demonstrate {telescope} is the central subject of this paper, not just mentioned in passing or for comparison. Prioritize content that shows substantial use, analysis, or technical discussion of {telescope}.
