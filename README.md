@@ -29,9 +29,6 @@ python scripts/3-evaluate_results.py output/results/submission.csv data/ground_t
 
 # Step 4: Summarize results (some of this is Claude slop, sorry)
 python scripts/4-analyze_results.py output/results/submission.csv --detailed
-
-# Step 5: Examine errors to identify improvement opportunities
-python scripts/5-examine_errors.py output/results/submission.csv data/ground_truth.json
 ```
 
 **If you want to run on the full Kaggle dataset, just simply run:**
