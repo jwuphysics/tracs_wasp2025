@@ -27,7 +27,7 @@ python scripts/2-classify_papers.py data/train_subset.csv
 # Step 3: Evaluate results (if ground truth available; *you should skip for the test sets)
 python scripts/3-evaluate_results.py output/results/submission.csv data/ground_truth.json
 
-# Step 4: Summarize results (some of this is Claude slop, sorry)
+# Step 4: Summarize results
 python scripts/4-analyze_results.py output/results/submission.csv --detailed
 ```
 
